@@ -50,6 +50,13 @@ class BuildMetadataPlugin : Plugin<Project> {
                         outputFile.set(packageTask.outputDirectory.file(fileName))
                     }.also {
                         target.tasks.getByName("assemble${variantName}").dependsOn(it)
+                        // QRSCAN-BEGIN: AGP's redirectIdeApkOutputs${Variant} (created for
+                        // IDE-triggered builds) treats the apk output dir as its output too;
+                        // declare a dependency so Gradle's implicit-dependency validation
+                        // does not fail the build.
+                        target.tasks.matching { t -> t.name == "redirectIdeApkOutputs$variantName" }
+                            .configureEach { dependsOn(it) }
+                        // QRSCAN-END
                     }
                 }
             }

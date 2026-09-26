@@ -13,7 +13,11 @@ android {
     namespace = "org.fcitx.fcitx5.android"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android"
+        // QRSCAN: fork-specific applicationId so the build coexists with the
+        // official app. Note: official plugin APKs (rime/jyutping/...) declare
+        // their MANIFEST intent against the official package name and will not
+        // be detected by this fork.
+        applicationId = "org.fcitx.fcitx5.android.qrscan"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         @Suppress("UnstableApiUsage")
@@ -27,7 +31,9 @@ android {
                     // android specific modules
                     "androidfrontend",
                     "androidkeyboard",
-                    "androidnotification"
+                    "androidnotification",
+                    // QRSCAN: stub engine; must be listed here or AGP won't build/package it
+                    "qrcode"
                 )
                 arguments(
                     // host-side gettext shims (msgfmt/msgmerge) for Windows build

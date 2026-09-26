@@ -15,6 +15,8 @@
 | `app/src/main/java/org/fcitx/fcitx5/android/input/qrscan/QrScanWindow.kt` | 相机扫码面板（CameraX+ZXing，持续扫描） |
 | `app/src/main/java/org/fcitx/fcitx5/android/input/qrscan/QrScanPermissionActivity.kt` | CAMERA 权限申请透明 Activity |
 | `app/src/main/res/drawable/ic_qr_scan.xml` | 工具栏 QR 图标 |
+| `tools/ecm/` | ECM (extra-cmake-modules) 内置副本，Windows 构建免外部依赖（BSD-3，源自 KDE） |
+| `tools/gettext/` | msgfmt/msgmerge Python shim + 启动器（msgfmt.py 纯标准库；msgfmt.cmd 用 PATH 上的 python/py） |
 
 ## 二、上游文件修改（QRSCAN 标记，合并时注意）
 

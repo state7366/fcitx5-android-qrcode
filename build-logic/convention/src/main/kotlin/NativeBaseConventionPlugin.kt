@@ -14,6 +14,9 @@ open class NativeBaseConventionPlugin : Plugin<Project> {
 
     override fun apply(target: Project) {
         val prebuiltDir = target.rootProject.projectDir.resolve("lib/fcitx5/src/main/cpp/prebuilt")
+        // QRSCAN: in-repo tools (ECM + gettext shim), overridable via env var or
+        // gradle property (env > property > in-repo default). See BUILDING.md.
+        val toolsDir = target.rootProject.projectDir.resolve("tools").invariantSeparatorsPath
         val isBuildingBundle = target.rootProject.gradle.startParameter.taskNames.any {
             it.startsWith("${target.path}:bundle")
         }
@@ -30,10 +33,14 @@ open class NativeBaseConventionPlugin : Plugin<Project> {
                             "-DPREBUILT_DIR=${prebuiltDir.absolutePath}",
                             // QRSCAN-BEGIN: host-side ECM + gettext shim discovery for
                             // Windows builds. Resolution: env var > gradle property >
-                            // default path. See BUILDING.md.
-                            "-DECM_DIR=${target.ep("ECM_DIR", "ECM_DIR") { "C:/Users/pony/.workbuddy/ecm/share/ECM/cmake" }}",
-                            "-DGETTEXT_MSGFMT_EXECUTABLE=${target.ep("GETTEXT_MSGFMT_EXECUTABLE", "GETTEXT_MSGFMT_EXECUTABLE") { "C:/Users/pony/.workbuddy/gettext/msgfmt.cmd" }}",
-                            "-DGETTEXT_MSGMERGE_EXECUTABLE=${target.ep("GETTEXT_MSGMERGE_EXECUTABLE", "GETTEXT_MSGMERGE_EXECUTABLE") { "C:/Users/pony/.workbuddy/gettext/msgmerge.cmd" }}",
+                            // in-repo tools/ default. See BUILDING.md.
+                            "-DECM_DIR=${target.ep("ECM_DIR", "ECM_DIR") { "$toolsDir/ecm/share/ECM/cmake" }}",
+                            "-DGETTEXT_MSGFMT_EXECUTABLE=${target.ep("GETTEXT_MSGFMT_EXECUTABLE", "GETTEXT_MSGFMT_EXECUTABLE") { "$toolsDir/gettext/msgfmt.cmd" }}",
+                            "-DGETTEXT_MSGMERGE_EXECUTABLE=${target.ep("GETTEXT_MSGMERGE_EXECUTABLE", "GETTEXT_MSGMERGE_EXECUTABLE") { "$toolsDir/gettext/msgmerge.cmd" }}",
+                            // fcitx5's FindECM.cmake ignores -DECM_DIR on Windows and
+                            // only honors the env var; inject it via project-include.
+                            "-DQRSCAN_ECM_DIR=${target.ep("ECM_DIR", "ECM_DIR") { "$toolsDir/ecm/share/ECM/cmake" }}",
+                            "-DCMAKE_PROJECT_INCLUDE=$toolsDir/cmake/qrscan-windows-env.cmake",
                             // QRSCAN-END
                         )
                     }

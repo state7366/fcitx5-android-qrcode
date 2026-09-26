@@ -13,30 +13,27 @@
 | NDK | **28.0.13004108**（严格匹配） | SDK Manager → SDK Tools → NDK (Side by side) 勾选 Show Package Details 选此版本 |
 | CMake | **3.31.6** | 同上，SDK Tools → CMake |
 | SDK Platforms / Build-Tools | android-36 / 36.1.0 | 同上 |
-| ECM (Extra CMake Modules) | 解压到任意目录；通过环境变量 `ECM_DIR=<目录>/share/ECM/cmake` 或 **用户级 gradle.properties 的 `ECM_DIR` 属性**（推荐，免重启）告知构建，kts 会以 `-DECM_DIR=` 传给 CMake | KDE 官方 zip：<https://github.com/KDE/extra-cmake-modules> 下载源码解压即可（纯 cmake 脚本无需编译）；本机放在 `C:\Users\pony\.workbuddy\ecm` |
-| gettext shim（Windows 必需） | `msgfmt.cmd`/`msgmerge.cmd` + `msgfmt.py` | 见下节 |
+| ECM (Extra CMake Modules) | **已内置于仓库 `tools/ecm/`**，开箱即用 | 纯 cmake 脚本（BSD-3，源自 KDE extra-cmake-modules），build-logic 默认以 `-DECM_DIR=<仓库>/tools/ecm/share/ECM/cmake` 传给 CMake |
+| gettext shim（Windows 必需） | **已内置于仓库 `tools/gettext/`**，唯一前置是宿主有 **Python 3.10+**（`python` 或 `py` 在 PATH） | 见下节 |
 
 ### Windows gettext shim（关键）
 
 fcitx5 的 CMake 需要 GNU gettext 的 `msgfmt`/`msgmerge`，Windows 没有官方易用版本，
-本项目用 Python shim 代替（已在仓库外，需要在新机器重建一次）：
+本项目用 Python shim 代替（`tools/gettext/msgfmt.py`，纯标准库实现 .po→.mo 编译、
+`--desktop` 模板复制；`msgfmt.cmd` 启动器依次尝试 `python`、`py -3`）。
+仓库已自带，**只需装好 Python 3.10+ 并验证**：
 
-1. 准备 `C:\Users\<你>\.workbuddy\gettext\msgfmt.py`（Python 3.10+ 可用，
-   实现 .po→.mo 编译、`--desktop` 模板复制；源码可向原机器索取或按此规格重写：
-   解析 .po 的 msgid/msgstr/msgctxt，写 GNU .mo（无 hash 表），支持
-   `--no-hash --endianness` 与 `--desktop -d 模板 -o 输出`）。
-2. 同目录放 `msgfmt.cmd` / `msgmerge.cmd`：
-   ```bat
-   @echo off
-   python "%~dp0msgfmt.py" %*
-   ```
-3. 若 shim 放在**其他路径**，有三种覆盖方式（优先级从高到低，无需改代码）：
-   - 环境变量：`GETTEXT_MSGFMT_EXECUTABLE` / `GETTEXT_MSGMERGE_EXECUTABLE`（改了要重启 AS + 杀 daemon）
-   - **gradle 属性（推荐）**：用户级 `~/.gradle/gradle.properties` 写
-     `GETTEXT_MSGFMT_EXECUTABLE=D:/tools/gettext/msgfmt.cmd`（msgmerge 同理，
-     `ECM_DIR` 同名属性也可）——配置阶段现读，**改完即生效，不用重启任何东西**
-   - 命令行 `-PGETTEXT_MSGFMT_EXECUTABLE=...`
-   都不设置则回落到默认路径 `C:/Users/pony/.workbuddy/gettext/`。
+```bat
+tools\gettext\msgfmt.cmd --version   :: 应输出 msgfmt (GNU gettext-tools) 0.22
+```
+
+若 ECM 或 shim 在别处（例如想用真 GNU gettext），有三种覆盖方式（优先级从高到低，无需改代码）：
+
+- 环境变量：`ECM_DIR` / `GETTEXT_MSGFMT_EXECUTABLE` / `GETTEXT_MSGMERGE_EXECUTABLE`（改了要重启 AS + 杀 daemon）
+- **gradle 属性**：用户级 `~/.gradle/gradle.properties` 写同名键（**路径必须用正斜杠** `D:/...`），配置阶段现读，改完即生效
+- 命令行 `-PECM_DIR=...`
+
+都不设置则回落到仓库内 `tools/` 默认值（推荐保持默认）。
 
 ## 二、获取代码
 

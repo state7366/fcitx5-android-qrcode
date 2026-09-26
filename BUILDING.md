@@ -95,6 +95,8 @@ Android Studio 之前设为系统/用户环境变量，改完要**完全退出�
 | 资源合并/打包阶段"拒绝访问"（zip-cache、timing.txt 等） | Windows 文件锁：删除对应 `app/build/intermediates/incremental/<失败任务名>` 目录重试 |
 | `kenlm` 子模块缺失 | `git submodule update --init --depth 1`（libime 的嵌套子模块） |
 | libqrcode.so 不在 APK 里 | 确认 `app/build.gradle.kts` 的 `cmake.targets` 含 `"qrcode"`（AGP 只构建列表内 target） |
+| `Starting Daemon > Downloading toolchain from api.foojay.io` 卡死 | Gradle daemon JVM toolchain 自动供给：本机没有满足条件的 JVM 时去 foojay 下 JDK（直连极慢）。解法：① AS 的 **Settings → Build Tools → Gradle → Gradle JVM** 显式选本地 JDK（如 AS 自带 `C:\Program Files\Android\Android Studio\jbr`）；② 用户级 `~/.gradle/gradle.properties` 加 `org.gradle.java.installations.paths=<本地JDK路径>` + `org.gradle.java.installations.auto-download=false`；③ 挂代理让它下完：`set JAVA_TOOL_OPTIONS=-Dhttps.proxyHost=192.168.2.2 -Dhttps.proxyPort=1081` 后重启 AS |
+| 每次 sync 都下载 gradle-9.6.1-bin.zip | wrapper 机制按 `gradle-wrapper.properties` 的 distributionUrl 下载，与"本地已装 Gradle"无关。预置缓存：`~/.gradle/wrapper/dists/gradle-9.6.1-bin/<hash>/`（含 `.ok` 标记）拷到新机器同路径即可跳过下载 |
 
 ## 六、本 fork 与上游的差异
 

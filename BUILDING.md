@@ -7,7 +7,7 @@
 
 | 依赖 | 版本/位置 | 说明 |
 |---|---|---|
-| Android Studio | 2026.1+（或能跑 AGP 9.4 的版本） | 打开项目根目录即可 |
+| Android Studio | **2026.1.4.8（quail4 patch1）**，最低要能跑 AGP **9.4.1**；旧版 AS 报 `Latest supported version is AGP 9.2.0` 即为版本过低，需升级 AS 而非降级 AGP | 打开项目根目录即可 |
 | JDK | 25（vfox 或 Android Studio 内嵌 JBR 17+ 均可，Gradle JVM 在 Settings → Build Tools → Gradle 里选） | 本机用 vfox 的 JDK 25 |
 | Android SDK | `C:\Users\<你>\AppData\Local\Android\Sdk` | 首次启动 Setup Wizard 自动下载 |
 | NDK | **28.0.13004108**（严格匹配） | SDK Manager → SDK Tools → NDK (Side by side) 勾选 Show Package Details 选此版本 |

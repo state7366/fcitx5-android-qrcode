@@ -19,6 +19,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.SubtypeManager
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -332,16 +333,22 @@ class InputView(
     fun startInput(info: EditorInfo, capFlags: CapabilityFlags, restarting: Boolean = false) {
         broadcaster.onStartInput(info, capFlags)
         returnKeyDrawable.updateDrawableOnEditorInfo(info)
-        if (service.pendingQrScan) {
-            // QR scan subtype was selected: show the camera panel
+        // QRSCAN-BEGIN: show the QR panel whenever fcitx's current input method is the
+        // qrcode engine — not just when a pending flag was set. Querying fcitx state
+        // directly also covers service restarts where the IMChangeEvent was missed
+        // (eventFlow has no replay).
+        val qrScanActive = service.pendingQrScan ||
+            fcitx.runImmediately { inputMethodEntryCached.uniqueName } == SubtypeManager.QRCODE_SUBTYPE
+        if (qrScanActive) {
             windowManager.attachWindow(QrScanWindow())
             service.pendingQrScan = false
         } else if (focusChangeResetKeyboard || !restarting || windowManager.current is QrScanWindow) {
             // The QrScanWindow check is a safety net: if the QR panel somehow survived an
-            // IME hide/show cycle without a pending intent, never come back to a stale
-            // camera panel — always show the keyboard.
+            // IME hide/show cycle while fcitx is on a real input method, never come back to
+            // a stale camera panel — always show the keyboard.
             windowManager.attachWindow(KeyboardWindow)
         }
+        // QRSCAN-END
     }
 
     override fun onStartHandleFcitxEvent() {

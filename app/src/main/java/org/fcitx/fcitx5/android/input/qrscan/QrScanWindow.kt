@@ -265,13 +265,18 @@ class QrScanWindow : InputWindow.ExtendedInputWindow<QrScanWindow>() {
 
     /**
      * Leave the QR panel and return to the normal keyboard. Only invoked when the user taps
-     * Cancel; scanning success keeps the panel open for continuous scanning. Also restores the
-     * system IME subtype to the current real fcitx input method.
+     * Cancel (or camera permission is denied); scanning success keeps the panel open for
+     * continuous scanning. Switches fcitx back to the last real input method; the resulting
+     * IMChangeEvent keeps the service-side state consistent (single source of truth).
      */
     private fun finishQrScan() {
         if (windowManager.isAttached(this)) {
-            service.switchToCurrentInputMethodSubtype()
+            // attach keyboard first for instant visual feedback; also releases the camera
+            // via this window's onDetached
             returnToKeyboard()
+            service.postFcitxJob {
+                activateIme(service.lastRealImBeforeQrScan ?: "keyboard-us")
+            }
         }
     }
 

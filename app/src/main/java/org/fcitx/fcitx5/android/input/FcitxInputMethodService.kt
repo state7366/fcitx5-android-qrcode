@@ -313,6 +313,25 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 handleDeleteSurrounding(before, after)
             }
             is FcitxEvent.IMChangeEvent -> {
+                // QRSCAN-BEGIN: single source of truth for entering/leaving QR scan mode.
+                // The "qrcode" engine is a stub; switching to it only opens the scan panel.
+                // The system subtype is deliberately NOT synced to qrcode — it always stays
+                // on the real text input method, so Android-side IME state is never polluted
+                // by the pseudo input method.
+                if (event.data.uniqueName == SubtypeManager.QRCODE_SUBTYPE) {
+                    inputView?.let {
+                        if (it.windowManager.current !is QrScanWindow) {
+                            it.windowManager.attachWindow(QrScanWindow())
+                        }
+                    } ?: run { pendingQrScan = true }
+                    return
+                }
+                lastRealImBeforeQrScan = event.data.uniqueName
+                if (inputView?.windowManager?.current is QrScanWindow) {
+                    pendingQrScan = false
+                    inputView?.windowManager?.attachWindow(KeyboardWindow)
+                }
+                // QRSCAN-END
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     val im = event.data.uniqueName
                     val subtype = SubtypeManager.subtypeOf(im) ?: return
@@ -714,30 +733,36 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      */
     private var skipNextSubtypeChange: String? = null
 
+    // QRSCAN-BEGIN: QR scan mode state.
     /**
-     * Set when the user selects the "QR 扫码" subtype; consumed by [InputView.startInput]
-     * to open the QR scan window instead of the keyboard.
+     * Set when fcitx switched to the "qrcode" engine while no [InputView] exists yet;
+     * consumed by [InputView.startInput] to open the QR scan window instead of the keyboard.
      */
     @Volatile
     var pendingQrScan: Boolean = false
+
+    /**
+     * The last real (non-qrcode) fcitx input method, used as the switch-back target when
+     * leaving QR scan mode. Null until the first IMChangeEvent; "keyboard-us" is the safe
+     * fallback (fcitx's always-present default).
+     */
+    @Volatile
+    internal var lastRealImBeforeQrScan: String? = null
+    // QRSCAN-END
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
         super.onCurrentInputMethodSubtypeChanged(newSubtype)
         val im = SubtypeManager.inputMethodOf(newSubtype)
         Timber.d("onCurrentInputMethodSubtypeChanged: im=$im")
+        // QRSCAN-BEGIN: the qrcode system subtype (created dynamically by
+        // SubtypeManager.syncWith once the user enables the qrcode engine) only means
+        // "switch fcitx to the qrcode engine". The IMChangeEvent handler opens the scan
+        // panel — single source of truth.
         if (im == SubtypeManager.QRCODE_SUBTYPE) {
-            // user picked the QR scan subtype: open the camera panel instead of a keyboard.
-            // The QR panel will be shown either now (if InputView already exists) or when
-            // InputView.startInput() runs. The system subtype stays QR while scanning so the
-            // panel remains visible; we switch back to the real text subtype once scanning is
-            // done or cancelled.
-            pendingQrScan = true
-            inputView?.let {
-                it.windowManager.attachWindow(QrScanWindow())
-                pendingQrScan = false
-            }
+            postFcitxJob { activateIme(SubtypeManager.QRCODE_SUBTYPE) }
             return
         }
+        // QRSCAN-END
         // real subtype selected by user (or our own switch-back): leave QR scan mode
         pendingQrScan = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -751,25 +776,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 activateIme(im)
             }
         }
-    }
-
-    /**
-     * Switch the system IME subtype back to the current fcitx input method without changing
-     * fcitx's active input method. Used after the user finishes or cancels QR scanning.
-     */
-    internal fun switchToCurrentInputMethodSubtype() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
-        val currentIm = try {
-            fcitx.runImmediately { inputMethodEntryCached.uniqueName }
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to read current input method for subtype restore")
-            return
-        }
-        if (currentIm == SubtypeManager.QRCODE_SUBTYPE) return
-        val subtype = SubtypeManager.subtypeOf(currentIm) ?: return
-        Timber.d("switchToCurrentInputMethodSubtype: restoring system subtype to $currentIm")
-        skipNextSubtypeChange = currentIm
-        switchInputMethod(InputMethodUtil.componentName, subtype)
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
@@ -1097,19 +1103,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
-        // If the IME view is hidden while the QR scan panel is still up (user dismissed the
-        // keyboard without tapping Cancel), leave QR mode entirely: restore the real text
-        // subtype and return to the keyboard window. Attaching KeyboardWindow detaches
-        // QrScanWindow, which releases the camera in its onDetached. Without this, the
-        // system would persist the pseudo "qrcode" subtype while hidden, and on the next
-        // focus the IME could come back in an inconsistent state where the keyboard
-        // never shows again.
+        // QRSCAN-BEGIN: if the IME view is hidden while the QR scan panel is still up
+        // (user dismissed the keyboard without tapping Cancel), leave QR mode entirely:
+        // switch fcitx back to the real input method and return to the keyboard window.
+        // Attaching KeyboardWindow detaches QrScanWindow, which releases the camera in its
+        // onDetached. Without this, the IME could come back in an inconsistent state where
+        // the keyboard never shows again.
         if (pendingQrScan || inputView?.windowManager?.current is QrScanWindow) {
             Timber.d("onFinishInputView: leaving QR scan mode on hide")
             pendingQrScan = false
-            switchToCurrentInputMethodSubtype()
+            postFcitxJob { activateIme(lastRealImBeforeQrScan ?: "keyboard-us") }
             inputView?.windowManager?.attachWindow(KeyboardWindow)
         }
+        // QRSCAN-END
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()
         currentInputConnection?.apply {

@@ -13,10 +13,7 @@
         android:isAsciiCapable="true"
         android:label="@string/app_name"
         android:overridesImplicitlyEnabledSubtype="true" />
-    <subtype
-        android:icon="@mipmap/ic_launcher"
-        android:imeSubtypeMode="keyboard"
-        android:isAsciiCapable="true"
-        android:label="@string/qr_scan"
-        android:subtypeExtraValue="qrcode" />
+    <!-- QRSCAN: no static qrcode subtype here; the qrcode engine is a real fcitx
+         input method, and SubtypeManager.syncWith() creates its system subtype
+         dynamically once the user enables it in fcitx settings. -->
 </input-method>

@@ -30,6 +30,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlag
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent.CandidateListEvent
+import org.fcitx.fcitx5.android.core.SubtypeManager
 import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -63,7 +64,6 @@ import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
-import org.fcitx.fcitx5.android.input.qrscan.QrScanWindow
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
@@ -308,7 +308,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                     windowManager.attachWindow(StatusAreaWindow())
                 }
                 qrScanButton.setOnClickListener {
-                    windowManager.attachWindow(QrScanWindow())
+                    // QRSCAN: enter QR mode by switching fcitx to the qrcode engine;
+                    // the IMChangeEvent handler opens the panel (single source of truth).
+                    // Requires "QR Code Scanner" to be enabled in fcitx input method list.
+                    service.postFcitxJob { activateIme(SubtypeManager.QRCODE_SUBTYPE) }
                 }
             }
             clipboardUi.suggestionView.apply {

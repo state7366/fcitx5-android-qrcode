@@ -9,9 +9,9 @@
 | 文件 | 作用 |
 |---|---|
 | `app/src/main/cpp/qrcode/qrcode.cpp` | qrcode stub engine（注册 fcitx 输入法条目，吞噬按键） |
-| `app/src/main/cpp/qrcode/CMakeLists.txt` | engine 构建（MODULE libqrcode.so） |
-| `app/src/main/assets/usr/share/fcitx5/addon/qrcode.conf` | fcitx addon 描述 |
-| `app/src/main/assets/usr/share/fcitx5/inputmethod/qrcode.conf` | fcitx 输入法描述 |
+| `app/src/main/cpp/qrcode/CMakeLists.txt` | engine 构建（MODULE libqrcode.so）+ 两个 conf 的 `install(... COMPONENT config)` 规则（照 androidfrontend 约定，由 installProjectConfig 装进 assets） |
+| `app/src/main/cpp/qrcode/qrcode-addon.conf` | fcitx addon 描述（安装为 assets `usr/share/fcitx5/addon/qrcode.conf`；**勿直接提交 assets/usr 下的文件，该目录被 gitignore**） |
+| `app/src/main/cpp/qrcode/qrcode-inputmethod.conf` | fcitx 输入法描述（安装为 assets `usr/share/fcitx5/inputmethod/qrcode.conf`） |
 | `app/src/main/java/org/fcitx/fcitx5/android/input/qrscan/QrScanWindow.kt` | 相机扫码面板（CameraX+ZXing，持续扫描） |
 | `app/src/main/java/org/fcitx/fcitx5/android/input/qrscan/QrScanPermissionActivity.kt` | CAMERA 权限申请透明 Activity |
 | `app/src/main/res/drawable/ic_qr_scan.xml` | 工具栏 QR 图标 |

@@ -319,6 +319,21 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // on the real text input method, so Android-side IME state is never polluted
                 // by the pseudo input method.
                 if (event.data.uniqueName == SubtypeManager.QRCODE_SUBTYPE) {
+                    // Lock the switch-back target NOW. With the enumerate-style switch key,
+                    // users often pass through intermediate IMs to reach qrcode (e.g.
+                    // english -> shuangpin -> qrcode). If the last real IM was only active
+                    // for a very short time, it was a pass-through: step one more back so
+                    // Cancel returns to where the user was actually working.
+                    val now = SystemClock.uptimeMillis()
+                    val last = realImHistory.lastOrNull()
+                    lastRealImBeforeQrScan =
+                        if (last != null && realImHistory.size >= 2 &&
+                            now - last.activatedAtMs < QR_SWITCHBACK_TRANSIENT_MS
+                        ) {
+                            realImHistory[realImHistory.size - 2].uniqueName
+                        } else {
+                            last?.uniqueName
+                        }
                     inputView?.let {
                         if (it.windowManager.current !is QrScanWindow) {
                             it.windowManager.attachWindow(QrScanWindow())
@@ -326,7 +341,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     } ?: run { pendingQrScan = true }
                     return
                 }
-                lastRealImBeforeQrScan = event.data.uniqueName
+                run {
+                    val now = SystemClock.uptimeMillis()
+                    if (realImHistory.lastOrNull()?.uniqueName != event.data.uniqueName) {
+                        realImHistory.addLast(RealImRecord(event.data.uniqueName, now))
+                        while (realImHistory.size > QR_REAL_IM_HISTORY_SIZE) {
+                            realImHistory.removeFirst()
+                        }
+                    }
+                }
                 if (inputView?.windowManager?.current is QrScanWindow) {
                     pendingQrScan = false
                     inputView?.windowManager?.attachWindow(KeyboardWindow)
@@ -742,12 +765,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     var pendingQrScan: Boolean = false
 
     /**
-     * The last real (non-qrcode) fcitx input method, used as the switch-back target when
-     * leaving QR scan mode. Null until the first IMChangeEvent; "keyboard-us" is the safe
-     * fallback (fcitx's always-present default).
+     * The switch-back target when leaving QR scan mode, computed and locked at the moment
+     * the qrcode engine activates (see IMChangeEvent handler). Null until computed;
+     * "keyboard-us" is the safe fallback (fcitx's always-present default).
      */
     @Volatile
     internal var lastRealImBeforeQrScan: String? = null
+
+    /** (uniqueName, activation time) of recently activated real input methods, oldest first. */
+    private data class RealImRecord(val uniqueName: String, val activatedAtMs: Long)
+
+    private val realImHistory = ArrayDeque<RealImRecord>()
     // QRSCAN-END
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
@@ -1186,5 +1214,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     companion object {
         const val DefaultHighlightColor = 0x008577  // material_deep_teal_500
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
+
+        // QRSCAN: if the previous real IM was active for less than this before qrcode
+        // was activated, treat it as a pass-through during enumerate-style switching
+        // and switch back to the one before it instead.
+        private const val QR_SWITCHBACK_TRANSIENT_MS = 3000L
+
+        // QRSCAN: how many recent real input methods to remember for switch-back.
+        private const val QR_REAL_IM_HISTORY_SIZE = 4
     }
 }

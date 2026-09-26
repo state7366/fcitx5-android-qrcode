@@ -41,9 +41,9 @@ fcitx5 的 CMake 需要 GNU gettext 的 `msgfmt`/`msgmerge`，Windows 没有官�
 ## 二、获取代码
 
 ```bash
-# 方式 A：直接拷贝整个 fcitx5-android-research 目录（含 .git 与 lib/* 子模块内容）
-# 方式 B：重新克隆
-git clone --depth 1 <你的远端或原机路径> fcitx5-android-research
+# 方式 A：从 GitHub fork 克隆（推荐，含全部最新修复）
+git clone https://github.com/state7366/fcitx5-qrcode.git fcitx5-android-research
+# 方式 B：直接拷贝整个 fcitx5-android-research 目录（含 .git 与 lib/* 子模块内容）
 cd fcitx5-android-research
 git submodule update --init --depth 1   # lib/* 子模块（fcitx5、libime 等，kenlm 为嵌套子模块）
 ```

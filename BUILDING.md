@@ -68,6 +68,24 @@ set ECM_DIR=C:/Users/<你>/.workbuddy/ecm/share/ECM/cmake
 gradlew :app:assembleDebug        # 或 :app:assembleRelease（需签名参数）
 ```
 
+## 四·五、Run/Debug Configuration 配置
+
+本项目是输入法（IME），"构建"不依赖 Run Configuration，但日常开发建议配 3 个：
+
+1. **app（自动生成）**：Gradle 同步成功后自动出现在工具栏下拉框。选设备 → ▶ 即可
+   编译 debug APK 并安装（IME 装完需到系统设置启用）。Build Variant 在
+   **Build → Select Build Variant** 切换；切到 release 但未给签名参数时只能产未签名 APK。
+2. **Gradle 任务配置（手动建，推荐）**：**Run → Edit Configurations → + → Gradle**，
+   `Run` 栏填任务与参数，`Gradle project` 选根工程。建议建两条：
+   - `assembleDebug`：`:app:assembleDebug -PbuildABI=arm64-v8a`
+   - `assembleRelease`：`:app:assembleRelease -PbuildABI=arm64-v8a -PsignKeyFile=D:\tools\keystore\<你的>.jks -PsignKeyPwd=<密码> -PsignKeyAlias=<别名>`
+   - `-PbuildABI=arm64-v8a` 只编 arm64（对应 build-logic 的 `buildAbiOverride`），全 ABI 会慢数倍。
+   - 签名三参数也支持环境变量形式 `SIGN_KEY_FILE/SIGN_KEY_PWD/SIGN_KEY_ALIAS`。
+3. **快捷方式**：右侧 Gradle 工具窗口 → `app → Tasks → build → assembleDebug` 双击即跑。
+
+注意：Gradle 配置**没有环境变量设置框**，`ECM_DIR`/`GETTEXT_*` 必须在启动
+Android Studio 之前设为系统/用户环境变量，改完要**完全退出并重启 AS**。
+
 ## 五、常见坑（均已在原机踩过）
 
 | 症状 | 解法 |

@@ -91,6 +91,7 @@ Android Studio 之前设为系统/用户环境变量，改完要**完全退出�
 | 症状 | 解法 |
 |---|---|
 | `find_package(ECM) 找不到` | 环境变量 `ECM_DIR` 未设置或 Android Studio 未重启；Debug 曾经成功不代表 Release(RelWithDebInfo) 不需要——两者是独立 CMake 配置目录 |
+| 设了环境变量仍报 ECM 找不到 / CMake 命令行仍是旧路径 | Gradle daemon 是常驻进程，环境变量是进程启动时的快照：必须 `gradlew --stop` 杀掉旧 daemon（任务管理器残留 java.exe 一并清掉）+ 完全退出 AS 再重开；仍不行则删各模块 `.cxx` 缓存目录后重建。判据：新 PowerShell 里 `echo $env:ECM_DIR` 有值，且构建日志中 `-DGETTEXT_MSGFMT_EXECUTABLE=` 显示本机路径 |
 | `find_package(Gettext) 找不到 msgfmt` | gettext shim 未就位或路径不对（见第一节） |
 | 资源合并/打包阶段"拒绝访问"（zip-cache、timing.txt 等） | Windows 文件锁：删除对应 `app/build/intermediates/incremental/<失败任务名>` 目录重试 |
 | `kenlm` 子模块缺失 | `git submodule update --init --depth 1`（libime 的嵌套子模块） |

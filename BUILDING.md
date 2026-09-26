@@ -96,7 +96,7 @@ Android Studio 之前设为系统/用户环境变量，改完要**完全退出�
 | `kenlm` 子模块缺失 | `git submodule update --init --depth 1`（libime 的嵌套子模块） |
 | libqrcode.so 不在 APK 里 | 确认 `app/build.gradle.kts` 的 `cmake.targets` 含 `"qrcode"`（AGP 只构建列表内 target） |
 | `Starting Daemon > Downloading toolchain from api.foojay.io` 卡死 | Gradle daemon JVM toolchain 自动供给：本机没有满足条件的 JVM 时去 foojay 下 JDK（直连极慢）。解法：① AS 的 **Settings → Build Tools → Gradle → Gradle JVM** 显式选本地 JDK（如 AS 自带 `C:\Program Files\Android\Android Studio\jbr`）；② 用户级 `~/.gradle/gradle.properties` 加 `org.gradle.java.installations.paths=<本地JDK路径>` + `org.gradle.java.installations.auto-download=false`；③ 挂代理让它下完：`set JAVA_TOOL_OPTIONS=-Dhttps.proxyHost=192.168.2.2 -Dhttps.proxyPort=1081` 后重启 AS。foojay ID `39701d92e1756bb2f141eb67cd4c660e` 的真身 = **Temurin JDK 21.0.7+6 win-x64 zip**，可从 GitHub Releases 或清华 TUNA `mirrors.tuna.tsinghua.edu.cn/Adoptium/` 手动下载后按解法②登记 |
-| 每次 sync 都下载 gradle-9.6.1-bin.zip | wrapper 机制按 `gradle-wrapper.properties` 的 distributionUrl 下载，与"本地已装 Gradle"无关。预置缓存：`~/.gradle/wrapper/dists/gradle-9.6.1-bin/<hash>/`（含 `.ok` 标记）拷到新机器同路径即可跳过下载 |
+| 每次 sync 都下载 gradle-9.6.1-bin.zip（或报 `Cannot use connection to Gradle distribution ... as it has been stopped`） | wrapper 机制按 `gradle-wrapper.properties` 的 distributionUrl 下载，与"本地已装 Gradle"无关。二选一：① 预置缓存：`~/.gradle/wrapper/dists/gradle-9.6.1-bin/<hash>/`（含 `.ok` 标记）拷到新机器同路径即可跳过下载；② **Settings → Build Tools → Gradle → Distribution 改 Local installation**，Gradle home 指向本地 gradle-9.6.1 目录（含 `bin/gradle.bat`，可从 wrapper 缓存里把 `gradle-9.6.1` 拷到干净位置），彻底不走 wrapper；命令行等价：用本地 `gradle` 代替 `gradlew` |
 
 ## 六、本 fork 与上游的差异
 

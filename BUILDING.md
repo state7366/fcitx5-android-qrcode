@@ -13,7 +13,7 @@
 | NDK | **28.0.13004108**（严格匹配） | SDK Manager → SDK Tools → NDK (Side by side) 勾选 Show Package Details 选此版本 |
 | CMake | **3.31.6** | 同上，SDK Tools → CMake |
 | SDK Platforms / Build-Tools | android-36 / 36.1.0 | 同上 |
-| ECM (Extra CMake Modules) | 解压到任意目录，设置**环境变量** `ECM_DIR=<目录>/share/ECM/cmake` | KDE 官方 zip：<https://github.com/KDE/extra-cmake-modules> 下载源码解压即可（纯 cmake 脚本无需编译）；本机放在 `C:\Users\pony\.workbuddy\ecm` |
+| ECM (Extra CMake Modules) | 解压到任意目录；通过环境变量 `ECM_DIR=<目录>/share/ECM/cmake` 或 **用户级 gradle.properties 的 `ECM_DIR` 属性**（推荐，免重启）告知构建，kts 会以 `-DECM_DIR=` 传给 CMake | KDE 官方 zip：<https://github.com/KDE/extra-cmake-modules> 下载源码解压即可（纯 cmake 脚本无需编译）；本机放在 `C:\Users\pony\.workbuddy\ecm` |
 | gettext shim（Windows 必需） | `msgfmt.cmd`/`msgmerge.cmd` + `msgfmt.py` | 见下节 |
 
 ### Windows gettext shim（关键）
@@ -30,12 +30,13 @@ fcitx5 的 CMake 需要 GNU gettext 的 `msgfmt`/`msgmerge`，Windows 没有官�
    @echo off
    python "%~dp0msgfmt.py" %*
    ```
-3. 若 shim 放在**其他路径**，构建前设置环境变量（二选一，无需改代码）：
-   ```
-   set GETTEXT_MSGFMT_EXECUTABLE=D:\tools\gettext\msgfmt.cmd
-   set GETTEXT_MSGMERGE_EXECUTABLE=D:\tools\gettext\msgmerge.cmd
-   ```
-   不设置则回落到默认路径 `C:/Users/pony/.workbuddy/gettext/`。
+3. 若 shim 放在**其他路径**，有三种覆盖方式（优先级从高到低，无需改代码）：
+   - 环境变量：`GETTEXT_MSGFMT_EXECUTABLE` / `GETTEXT_MSGMERGE_EXECUTABLE`（改了要重启 AS + 杀 daemon）
+   - **gradle 属性（推荐）**：用户级 `~/.gradle/gradle.properties` 写
+     `GETTEXT_MSGFMT_EXECUTABLE=D:/tools/gettext/msgfmt.cmd`（msgmerge 同理，
+     `ECM_DIR` 同名属性也可）——配置阶段现读，**改完即生效，不用重启任何东西**
+   - 命令行 `-PGETTEXT_MSGFMT_EXECUTABLE=...`
+   都不设置则回落到默认路径 `C:/Users/pony/.workbuddy/gettext/`。
 
 ## 二、获取代码
 

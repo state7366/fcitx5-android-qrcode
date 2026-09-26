@@ -35,13 +35,6 @@ android {
                     // QRSCAN: stub engine; must be listed here or AGP won't build/package it
                     "qrcode"
                 )
-                arguments(
-                    // host-side gettext shims (msgfmt/msgmerge) for Windows build.
-                    // Override via env vars or gradle properties on machines where the shims live elsewhere.
-                    "-DECM_DIR=${System.getenv("ECM_DIR") ?: (findProperty("ECM_DIR") as String?) ?: "C:/Users/pony/.workbuddy/ecm/share/ECM/cmake"}",
-                    "-DGETTEXT_MSGFMT_EXECUTABLE=${System.getenv("GETTEXT_MSGFMT_EXECUTABLE") ?: (findProperty("GETTEXT_MSGFMT_EXECUTABLE") as String?) ?: "C:/Users/pony/.workbuddy/gettext/msgfmt.cmd"}",
-                    "-DGETTEXT_MSGMERGE_EXECUTABLE=${System.getenv("GETTEXT_MSGMERGE_EXECUTABLE") ?: (findProperty("GETTEXT_MSGMERGE_EXECUTABLE") as String?) ?: "C:/Users/pony/.workbuddy/gettext/msgmerge.cmd"}",
-                )
             }
         }
     }

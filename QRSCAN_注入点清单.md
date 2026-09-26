@@ -31,7 +31,8 @@
 | `app/src/main/res/values/strings.xml` | qr_scan 系列字符串 |
 | `app/src/main/res/values/themes.xml` | QrScanPermissionActivity 透明主题 |
 | `app/src/main/res/xml/input_method.xml` | **无静态 qrcode subtype**（注释说明；engine 模式下由 SubtypeManager.syncWith 动态创建） |
-| `app/build.gradle.kts` + `gradle/libs.versions.toml` | CameraX 1.4.2 + ZXing 3.5.4 依赖 |
+| `app/build.gradle.kts` + `gradle/libs.versions.toml` | CameraX 1.4.2 + ZXing 3.5.4 依赖；fork applicationId（`org.fcitx.fcitx5.android.qrscan`）；cmake targets 增加 `"qrcode"` |
+| `build-logic/convention/src/main/kotlin/NativeBaseConventionPlugin.kt` | QRSCAN-BEGIN/END 块：向所有 native 模块的 cmake arguments 注入 `-DECM_DIR`/`-DGETTEXT_MSGFMT_EXECUTABLE`/`-DGETTEXT_MSGMERGE_EXECUTABLE`（env var > gradle 属性 > 默认路径，复用 `Utils.kt` 的 `ep()`；Windows 构建可移植性，详见 BUILDING.md） |
 
 ## 三、架构不变式（修改 QR 逻辑时必须维持）
 

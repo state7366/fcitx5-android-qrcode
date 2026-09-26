@@ -27,7 +27,14 @@ open class NativeBaseConventionPlugin : Plugin<Project> {
                         arguments(
                             "-DANDROID_STL=c++_shared",
                             "-DVERSION_NAME=${Versions.baseVersionName}",
-                            "-DPREBUILT_DIR=${prebuiltDir.absolutePath}"
+                            "-DPREBUILT_DIR=${prebuiltDir.absolutePath}",
+                            // QRSCAN-BEGIN: host-side ECM + gettext shim discovery for
+                            // Windows builds. Resolution: env var > gradle property >
+                            // default path. See BUILDING.md.
+                            "-DECM_DIR=${target.ep("ECM_DIR", "ECM_DIR") { "C:/Users/pony/.workbuddy/ecm/share/ECM/cmake" }}",
+                            "-DGETTEXT_MSGFMT_EXECUTABLE=${target.ep("GETTEXT_MSGFMT_EXECUTABLE", "GETTEXT_MSGFMT_EXECUTABLE") { "C:/Users/pony/.workbuddy/gettext/msgfmt.cmd" }}",
+                            "-DGETTEXT_MSGMERGE_EXECUTABLE=${target.ep("GETTEXT_MSGMERGE_EXECUTABLE", "GETTEXT_MSGMERGE_EXECUTABLE") { "C:/Users/pony/.workbuddy/gettext/msgmerge.cmd" }}",
+                            // QRSCAN-END
                         )
                     }
                 }

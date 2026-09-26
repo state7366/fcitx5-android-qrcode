@@ -37,6 +37,13 @@ class InputWindowManager : UniqueViewComponent<InputWindowManager, FrameLayout>(
     private var currentWindow: InputWindow? = null
     private var currentView: View? = null
 
+    /**
+     * Read-only view of the currently attached window, for callers that need to know
+     * which window is showing (e.g. to check whether the QR scan panel is still up).
+     */
+    val current: InputWindow?
+        get() = currentWindow
+
     private val disableAnimation by AppPrefs.getInstance().advanced.disableAnimation
 
     private fun prepareAnimation(

@@ -48,4 +48,8 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.status_area)
     }
 
+    val qrScanButton = toolButton(R.drawable.ic_qr_scan).apply {
+        contentDescription = ctx.getString(R.string.qr_scan)
+    }
+
 }

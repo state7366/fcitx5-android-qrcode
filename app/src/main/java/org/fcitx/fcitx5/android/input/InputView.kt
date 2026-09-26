@@ -36,6 +36,7 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.Display
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSize
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
+import org.fcitx.fcitx5.android.input.qrscan.QrScanWindow
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
@@ -103,7 +104,7 @@ class InputView(
     private val preeditEmptyState = PreeditEmptyStateComponent()
     private val preedit = PreeditComponent()
     private val commonKeyActionListener = CommonKeyActionListener()
-    private val windowManager = InputWindowManager()
+    val windowManager = InputWindowManager()
     private val kawaiiBar = KawaiiBarComponent()
     private val horizontalCandidate = HorizontalCandidateComponent()
     private val keyboardWindow = KeyboardWindow()
@@ -331,7 +332,14 @@ class InputView(
     fun startInput(info: EditorInfo, capFlags: CapabilityFlags, restarting: Boolean = false) {
         broadcaster.onStartInput(info, capFlags)
         returnKeyDrawable.updateDrawableOnEditorInfo(info)
-        if (focusChangeResetKeyboard || !restarting) {
+        if (service.pendingQrScan) {
+            // QR scan subtype was selected: show the camera panel
+            windowManager.attachWindow(QrScanWindow())
+            service.pendingQrScan = false
+        } else if (focusChangeResetKeyboard || !restarting || windowManager.current is QrScanWindow) {
+            // The QrScanWindow check is a safety net: if the QR panel somehow survived an
+            // IME hide/show cycle without a pending intent, never come back to a stale
+            // camera panel — always show the keyboard.
             windowManager.attachWindow(KeyboardWindow)
         }
     }

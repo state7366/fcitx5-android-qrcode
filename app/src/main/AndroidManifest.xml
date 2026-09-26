@@ -13,6 +13,8 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- remove intent queries merged from library manifest (namely Android-Image-Cropper) -->
     <queries tools:node="removeAll" />
@@ -179,7 +181,12 @@
                 android:name="splitties.views.dsl.appcompat.experimental.AppCompatViewInstantiatorInjecter"
                 android:value="androidx.startup"
                 tools:node="remove" />
-        </provider>
+            </provider>
+
+        <activity
+            android:name=".input.qrscan.QrScanPermissionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent" />
     </application>
 
 </manifest>

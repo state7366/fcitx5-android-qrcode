@@ -15,6 +15,8 @@ import org.fcitx.fcitx5.android.utils.inputMethodManager
 
 object SubtypeManager {
 
+    const val QRCODE_SUBTYPE = "qrcode"
+
     private const val MODE_KEYBOARD = "keyboard"
 
     private const val IM_KEYBOARD = "keyboard-us"

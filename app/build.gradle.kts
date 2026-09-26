@@ -29,6 +29,11 @@ android {
                     "androidkeyboard",
                     "androidnotification"
                 )
+                arguments(
+                    // host-side gettext shims (msgfmt/msgmerge) for Windows build
+                    "-DGETTEXT_MSGFMT_EXECUTABLE=C:/Users/pony/.workbuddy/gettext/msgfmt.cmd",
+                    "-DGETTEXT_MSGMERGE_EXECUTABLE=C:/Users/pony/.workbuddy/gettext/msgmerge.cmd",
+                )
             }
         }
     }
@@ -124,6 +129,11 @@ dependencies {
     implementation(libs.splitties.views.dsl.recyclerview)
     implementation(libs.splitties.views.recyclerview)
     implementation(libs.aboutlibraries.core)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)

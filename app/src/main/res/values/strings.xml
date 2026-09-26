@@ -321,4 +321,11 @@
     <string name="keyboard_height_percent_base">Keyboard height percent base</string>
     <string name="display_metrics">Display metrics (Resources.getDisplayMetrics)</string>
     <string name="real_size">Real size (Display.getRealSize)</string>
+    <string name="qr_scan">QR 扫码</string>
+    <string name="qr_scan_permission_required">需要相机权限才能扫描二维码</string>
+    <string name="qr_scan_camera_error">无法打开相机</string>
+    <string name="qr_scan_open_link">打开链接</string>
+    <string name="qr_scan_fill_text">填入文本</string>
+    <string name="qr_scan_hint">将二维码放入框内</string>
+    <string name="qr_scan_committed">已提交：%1$s</string>
 </resources>

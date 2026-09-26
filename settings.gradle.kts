@@ -1,7 +1,7 @@
 pluginManagement {
     includeBuild("build-logic")
     repositories {
-        gradlePluginPortal()
+        maven { url = uri("https://plugins.gradle.org/m2/") } // portal m2 direct, bypass API
         google()
         mavenCentral()
     }

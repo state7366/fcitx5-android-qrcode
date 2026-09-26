@@ -17,6 +17,11 @@ android {
                     // fcitx5-lua
                     "luaaddonloader"
                 )
+                arguments(
+                    // host-side gettext shims (msgfmt/msgmerge) for Windows build
+                    "-DGETTEXT_MSGFMT_EXECUTABLE=C:/Users/pony/.workbuddy/gettext/msgfmt.cmd",
+                    "-DGETTEXT_MSGMERGE_EXECUTABLE=C:/Users/pony/.workbuddy/gettext/msgmerge.cmd",
+                )
             }
         }
     }

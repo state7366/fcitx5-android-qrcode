@@ -91,6 +91,7 @@ Android Studio 之前设为系统/用户环境变量，改完要**完全退出�
 | 症状 | 解法 |
 |---|---|
 | `find_package(ECM) 找不到` | 环境变量 `ECM_DIR` 未设置或 Android Studio 未重启；Debug 曾经成功不代表 Release(RelWithDebInfo) 不需要——两者是独立 CMake 配置目录 |
+| `installLibraryConfig/Translation[...]`、`installProjectConfig/Translation` 报 `cmake.exe finished with non-zero exit value 1`（configure/build 已成功） | 这些任务执行 `cmake --build --target generate-desktop-file / translation-file`，即**调用 msgfmt**。失败 = msgfmt shim 不好使：① `GETTEXT_*` 环境变量没进 daemon（回落旧机默认路径）；② `msgfmt.cmd` 里 Python 路径没改成本机的；③ 新机器没装 Python 3.10+。验证：`msgfmt.cmd --version` 应输出 0.22；再手动 `cmake --build lib\fcitx5\.cxx\Debug\<hash>\arm64-v8a --target translation-file` 看真实报错 |
 | 设了环境变量仍报 ECM 找不到 / CMake 命令行仍是旧路径 | Gradle daemon 是常驻进程，环境变量是进程启动时的快照：必须 `gradlew --stop` 杀掉旧 daemon（任务管理器残留 java.exe 一并清掉）+ 完全退出 AS 再重开；仍不行则删各模块 `.cxx` 缓存目录后重建。判据：新 PowerShell 里 `echo $env:ECM_DIR` 有值，且构建日志中 `-DGETTEXT_MSGFMT_EXECUTABLE=` 显示本机路径 |
 | `find_package(Gettext) 找不到 msgfmt` | gettext shim 未就位或路径不对（见第一节） |
 | 资源合并/打包阶段"拒绝访问"（zip-cache、timing.txt 等） | Windows 文件锁：删除对应 `app/build/intermediates/incremental/<失败任务名>` 目录重试 |

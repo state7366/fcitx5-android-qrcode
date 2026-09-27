@@ -45,10 +45,12 @@ static void sort_reading_order(std::vector<Object>& objects)
 }
 
 // Newline-merge tuning: fractions of the image width treated as the right /
-// left margin. A line that touches the right margin followed by a line starting
-// at the left margin is treated as a wrapped continuation of the same line.
-static constexpr float kMergeRightMarginFrac = 0.96f;
-static constexpr float kMergeLeftMarginFrac  = 0.04f;
+// left margin. A line that reaches (near) the right margin followed by a line
+// starting at the left margin is treated as a wrapped continuation of the same
+// line. 0.90 / 0.10 (NOT 0.96 / 0.04): a line that stops a little short of the
+// full width -- common in real scans with page padding -- must still merge.
+static constexpr float kMergeRightMarginFrac = 0.90f;
+static constexpr float kMergeLeftMarginFrac  = 0.10f;
 
 // Decide whether two consecutive text boxes should be joined into one logical
 // line (i.e. NO newline between them). Returns true to merge.
@@ -77,6 +79,7 @@ static bool should_merge_lines(const Object& prev, const Object& cur, int imgWid
     cur.rrect.points(pb);
     const float prevRight  = std::max({pa[0].x, pa[1].x, pa[2].x, pa[3].x});
     const float curLeft    = std::min({pb[0].x, pb[1].x, pb[2].x, pb[3].x});
+    const float curRight   = std::max({pb[0].x, pb[1].x, pb[2].x, pb[3].x});
     const float prevBottom = std::max({pa[0].y, pa[1].y, pa[2].y, pa[3].y});
     const float curTop     = std::min({pb[0].y, pb[1].y, pb[2].y, pb[3].y});
 
@@ -85,11 +88,14 @@ static bool should_merge_lines(const Object& prev, const Object& cur, int imgWid
     if (std::abs(prev.rrect.center.y - cur.rrect.center.y) <= halfBand)
         return true;
 
-    // (2) wrapped continuation: prev runs to the right margin, cur resumes at
-    // the left margin, and cur sits below prev.
+    // (2) wrapped continuation: prev runs to (near) the right margin, cur
+    // resumes at the left margin, cur sits below prev, AND cur does not itself
+    // reach the right margin (it is a shorter remainder). The last clause is
+    // what keeps two genuine full-width lines from being merged into one.
     const float rightMargin = static_cast<float>(imgWidth) * kMergeRightMarginFrac;
     const float leftMargin  = static_cast<float>(imgWidth) * kMergeLeftMarginFrac;
-    if (prevRight >= rightMargin && curLeft <= leftMargin && curTop > prevBottom)
+    if (prevRight >= rightMargin && curLeft <= leftMargin && curTop > prevBottom
+        && curRight < prevRight)
         return true;
 
     return false;

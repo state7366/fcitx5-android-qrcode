@@ -25,7 +25,7 @@
   | Tesseract 5（默认） | 本地 · 隐私友好 | `tesseract4android` AAR 内置于 `app/libs/`，离线可用、图片不出手机；`assets/tessdata/` 下的 `chi_sim`+`eng`（tessdata_fast）首次使用时释放到 App 私有目录 |
   | 百度智能云 OCR | 云端 · 功能强 | AK/SK 换取 access_token，默认 `accurate_basic` 高精度版 |
   | 腾讯云 OCR | 云端 · 功能强 | TC3-HMAC-SHA256 签名，默认 `GeneralAccurateOCR` |
-  | 白描（自建服务） | 自建 | 白描没有官方云 API，走自建 `baimiao_api`：`POST {服务地址}/ocr`，multipart 图片 + `Authorization: Bearer` |
+  | 白描（桌面版） | 局域网 | 官方「本地服务器模式」([API.md](https://github.com/baimiaoapp/baimiao-desktop/blob/main/API.md))：`POST {地址}/ocr`，form-data 字段 `image`（或 `b64`）+ 可选 `lang`，响应 `data.text_all`，**无鉴权**。默认监听 `0.0.0.0:8888`，端口可在客户端设置里改（如 51314） |
   | 自定义 HTTP 接口 | 任意 | 自己填 URL / 请求头 / 请求体模板（`{base64}` 占位）/ 结果 JSON 路径，可对接任何服务商 |
 
 - **配置导入导出**：设置页可把当前引擎与凭据导出为 `ocr-config.json`，或导入之前导出的文件（密钥字段在界面上掩码显示）。

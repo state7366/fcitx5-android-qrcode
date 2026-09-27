@@ -103,5 +103,5 @@
 | `tesseract` | Tesseract 5（默认） | 本地 · 隐私友好 | 内置 `chi_sim`+`eng` 训练数据，图片不出手机 |
 | `baidu` | 百度智能云 OCR | 云端 | AK/SK → access_token → `accurate_basic` |
 | `tencent` | 腾讯云 OCR | 云端 | TC3-HMAC-SHA256 签名，`GeneralAccurateOCR` |
-| `baimiao` | 白描（自建服务） | 自建 | `POST {baseUrl}/ocr`，multipart + Bearer Token |
+| `baimiao` | 白描（桌面版） | 局域网 | 官方「本地服务器模式」`POST {baseUrl}/ocr`，form-data `image` / `b64` + `lang`，响应 `data.text_all`，无鉴权；默认端口 8888（客户端设置可改） |
 | `custom` | 自定义 HTTP 接口 | 任意 | 自行定义 URL / headers / 请求体模板（`{base64}`）/ 结果 JSON 路径 |

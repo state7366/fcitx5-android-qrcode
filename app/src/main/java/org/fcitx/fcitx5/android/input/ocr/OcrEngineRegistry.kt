@@ -26,6 +26,8 @@ object OcrEngineRegistry {
         register(BaiduProvider)
         register(TencentProvider)
         register(BaimiaoProvider)
+        // 白描 Android 端「WiFi 传输识别」（局域网）
+        register(BaimiaoWifiProvider)
         register(CustomHttpProvider)
     }
 

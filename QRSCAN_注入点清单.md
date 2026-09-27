@@ -79,7 +79,8 @@
 | `.../ui/main/settings/ocr/OcrSettingsFragment.kt` | 新增：引擎选择器 + 按 `OcrEngineSpec.fields` 动态生成表单 + 配置导入导出（SAF） |
 | `.../ui/main/settings/SettingsRoute.kt` | `SettingsRoute.Ocr` + `createGraph` 里 `fragment<OcrSettingsFragment, Ocr>` |
 | `.../ui/main/MainFragment.kt` | Android 分类下新增「OCR 识别引擎」入口 |
-| `AndroidManifest.xml` | 新增 `android.permission.INTERNET`（云端引擎需要） |
+| `AndroidManifest.xml` | 新增 `android.permission.INTERNET`（云端引擎需要）；`android:networkSecurityConfig="@xml/network_security_config"`（局域网明文 HTTP） |
+| `res/xml/network_security_config.xml` | 新增（OCRSCAN 标记）：targetSdk 36 默认禁明文，放行局域网 OCR 服务的 `http://` |
 | `.../input/ocr/TessDataInstaller.kt` | 新增：把 `assets/tessdata` 下的训练数据拷到 app 私有目录（native 读不到 APK 内 assets） |
 | `.../input/ocr/OcrScanWindow.kt` | 新增：相机面板；单拍识别（拍照→识别→上屏/复制），非逐帧 |
 | `app/src/main/java/.../core/SubtypeManager.kt` | `OCR_SUBTYPE = "ocr"` |
@@ -104,4 +105,5 @@
 | `baidu` | 百度智能云 OCR | 云端 | AK/SK → access_token → `accurate_basic` |
 | `tencent` | 腾讯云 OCR | 云端 | TC3-HMAC-SHA256 签名，`GeneralAccurateOCR` |
 | `baimiao` | 白描（桌面版） | 局域网 | 官方「本地服务器模式」`POST {baseUrl}/ocr`，form-data `image` / `b64` + `lang`，响应 `data.text_all`，无鉴权；默认端口 8888（客户端设置可改） |
+| `baimiao-wifi` | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」：`POST /files`（multipart `fileName`+`newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>`（`status` 2 完成 / 3 失败）→ `POST /filesResult` 取 `result`；同名覆盖，默认 `fcitx5-ocr.jpg`；无鉴权 |
 | `custom` | 自定义 HTTP 接口 | 任意 | 自行定义 URL / headers / 请求体模板（`{base64}`）/ 结果 JSON 路径 |

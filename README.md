@@ -18,7 +18,7 @@
 
 - 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。全屏预览 + 半透明结果卡片，不再有取景框遮挡。
 - **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义 `OcrEngine` 接口，`OcrEngineRegistry` 负责注册与创建，引擎用 `OcrEngineSpec` + `OcrFieldSpec` 自描述配置项，因此新增一个模型**只需注册一个 provider**，面板、设置界面与输入法框架零改动。
-- **内置 5 种后端，可在 设置 → OCR 识别引擎 中手动切换**：
+- **内置 6 种后端，可在 设置 → OCR 识别引擎 中手动切换**：
 
   | 引擎 | 类型 | 说明 |
   |---|---|---|
@@ -26,7 +26,29 @@
   | 百度智能云 OCR | 云端 · 功能强 | AK/SK 换取 access_token，默认 `accurate_basic` 高精度版 |
   | 腾讯云 OCR | 云端 · 功能强 | TC3-HMAC-SHA256 签名，默认 `GeneralAccurateOCR` |
   | 白描（桌面版） | 局域网 | 官方「本地服务器模式」([API.md](https://github.com/baimiaoapp/baimiao-desktop/blob/main/API.md))：`POST {地址}/ocr`，form-data 字段 `image`（或 `b64`）+ 可选 `lang`，响应 `data.text_all`，**无鉴权**。默认监听 `0.0.0.0:8888`，端口可在客户端设置里改（如 51314） |
+  | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」（首页右上角 WIFI 按钮开启）。复刻官方 Web UI 的端点：`POST /files`（multipart `fileName` + `newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>` → `POST /filesResult` 取 `result`，**无鉴权**。见下方「白描手机 WiFi 传输」小节 |
   | 自定义 HTTP 接口 | 任意 | 自己填 URL / 请求头 / 请求体模板（`{base64}` 占位）/ 结果 JSON 路径，可对接任何服务商 |
+
+#### 白描手机 WiFi 传输（实测端点）
+
+在白描 App 首页右上角点 WIFI 按钮开启后，App 内会起一个局域网 HTTP 服务（例如 `http://192.168.3.5:51314`），浏览器打开该地址即为官方的「WiFi 传输识别」页面。本引擎完全复用该页面（`transfer.js` / `result.js`）自己调用的端点，未使用任何私有或未公开协议：
+
+| 方法 | 路径 | 参数 | 返回 |
+|---|---|---|---|
+| POST | `/files` | multipart：`fileName=<文件名>`、`newfile=<图片>`（jpg/jpeg/png） | 空，200 表示接收 |
+| GET | `/files?<时间戳>` | — | `{recognizeStatus, files:[{path,name,width,height,status,size}]}` |
+| POST | `/recognize/all` | `_method=recognize` | 异步启动批量识别 |
+| POST | `/filesResult` | — | `{recognizeResult, files:[{... ,result}]}` |
+| POST | `/fileAllDelete` | `_method=delete` | 清空列表 |
+
+- 文件 `status`：`0` 未识别 / `1` 识别中 / `2` 已识别 / `3` 识别失败；全局 `recognizeStatus` 同理。
+- **同名上传会覆盖**，引擎默认用固定名 `fcitx5-ocr.jpg`，因此列表不会堆积（官方 UI 上限 50 张）。
+- 实测限制：`fileDelete`（单张删除）在现行版本是空操作，所以可选的「识别后清空列表」走的是 `fileAllDelete`。
+- 实测限制：官方说明要求白描保持前台；后台时服务可能被回收，此时会报连接失败/超时。
+- 实测限制：扩展名必须与图片内容一致（PNG 内容命名成 `.jpg` 会一直停在 `status=0`）；引擎固定上传 JPEG + `.jpg`。
+- 实测限制：**同名覆盖不会重置 `status`**，所以每次都用唯一文件名（前缀+时间戳），否则第二次会读到上一张的旧结果。
+- 服务端会把一张图里的多个文本块直接拼接，块之间不保证有换行。
+- 因为是明文 `http://`，`res/xml/network_security_config.xml`（OCRSCAN 标记）整体放行了明文流量，否则 targetSdk 36 下局域网请求会被系统拒绝。
 
 - **配置导入导出**：设置页可把当前引擎与凭据导出为 `ocr-config.json`，或导入之前导出的文件（密钥字段在界面上掩码显示）。
 - 同样需在 fcitx **设置 → 输入法 → 添加** 中启用 "OCR Text Scanner" 才能使用。

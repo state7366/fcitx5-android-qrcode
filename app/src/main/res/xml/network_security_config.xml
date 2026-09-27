@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OCRSCAN-BEGIN
+  自 Android 9（API 28）起默认禁止明文 HTTP，而局域网内的 OCR 服务
+  （白描「WiFi 传输识别」、白描桌面版本地服务器、自建接口）都是 http://
+  且监听在用户自己挑的 IP / 端口上，无法在这里预先枚举域名，
+  因此整体放行明文流量。这些请求只在局域网内发出，不会走公网。
+  OCRSCAN-END
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

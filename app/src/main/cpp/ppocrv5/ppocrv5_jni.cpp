@@ -5,6 +5,7 @@
 // pixels are locked with the NDK bitmap API and converted to an RGB cv::Mat; the
 // model expects RGB order, not the ARGB_8888 the Android side hands us.
 #include <android/bitmap.h>
+#include <android/log.h>
 #include <jni.h>
 
 #include <algorithm>
@@ -28,18 +29,60 @@
 // export the real symbol wins.
 extern "C" __attribute__((weak)) void __kmpc_dispatch_deinit(void*, int) {}
 
+// OCRSCAN-DEBUG: dump every detection box (geometry + recognized text) to
+// logcat so we can reproduce the engine's real output off-device. Tag:
+// "PpOcrV5Dump". Grep logcat for that tag after a recognition run.
+#define PPOCRV5_DUMP_TAG "PpOcrV5Dump"
+static void dump_objects(const char* stage, const std::vector<Object>& objects,
+                         int imgW, int imgH)
+{
+    __android_log_print(ANDROID_LOG_INFO, PPOCRV5_DUMP_TAG,
+                        "[%s] img=%dx%d nBoxes=%d", stage, imgW, imgH, (int)objects.size());
+    for (size_t i = 0; i < objects.size(); ++i)
+    {
+        const Object& o = objects[i];
+        std::string s;
+        for (const Character& ch : o.text)
+            if (ch.id >= 0 && ch.id < character_dict_size)
+                s += character_dict[ch.id];
+        const cv::Point2f c = o.rrect.center;
+        __android_log_print(ANDROID_LOG_INFO, PPOCRV5_DUMP_TAG,
+                            "  #%02zu cy=%.1f cx=%.1f w=%.1f h=%.1f ang=%.1f ori=%d | %s",
+                            i, c.y, c.x, o.rrect.size.width, o.rrect.size.height,
+                            o.rrect.angle, o.orientation, s.c_str());
+    }
+}
+
 // Sort boxes into reading order: top-to-bottom by row, with left-to-right
 // order inside a row. This is the conventional reading order the user expects
-// (NOT left-most-start-first). Boxes whose vertical centres fall within a
-// half-line band are treated as the same row and ordered by x.
+// (NOT left-most-start-first).
+//
+// IMPORTANT: the previous comparator used a PAIR-DEPENDENT half-band
+// (max(a.h, b.h) * 0.5) as the y-vs-x tie-breaker. That is NOT a strict weak
+// ordering, so std::sort had undefined behaviour and scrambled the order
+// differently depending on the box heights (fine for uniform boxes, garbage
+// for a title + smaller body lines). The fix below is a VALID total order:
+// quantize center.y into row buckets of ~median line height, then sort by
+// (row, x). Quantizing makes the primary key a true function of each box, so
+// the ordering is well-defined and stable.
 static void sort_reading_order(std::vector<Object>& objects)
 {
-    std::sort(objects.begin(), objects.end(), [](const Object& a, const Object& b) {
-        const float ay = a.rrect.center.y;
-        const float by = b.rrect.center.y;
-        const float band = std::max(a.rrect.size.height, b.rrect.size.height) * 0.5f;
-        if (std::abs(ay - by) > band)
-            return ay < by;
+    if (objects.empty())
+        return;
+    // Robust row height: median of all box heights (resistant to one very tall
+    // box like a title). Falls back to 1px so we never divide by zero.
+    std::vector<float> heights;
+    heights.reserve(objects.size());
+    for (const auto& o : objects)
+        heights.push_back(o.rrect.size.height);
+    std::sort(heights.begin(), heights.end());
+    const float rowH = std::max(heights[heights.size() / 2], 1.0f);
+
+    std::sort(objects.begin(), objects.end(), [rowH](const Object& a, const Object& b) {
+        const int ra = static_cast<int>(std::floor(a.rrect.center.y / rowH));
+        const int rb = static_cast<int>(std::floor(b.rrect.center.y / rowH));
+        if (ra != rb)
+            return ra < rb;
         return a.rrect.center.x < b.rrect.center.x;
     });
 }
@@ -363,7 +406,9 @@ Java_org_fcitx_fcitx5_android_input_ocr_PpOcrV5Native_nativeRecognize(
 
             std::vector<Object> objects;
             engine->detect_and_recognize(rgb, objects);
+            dump_objects("RAW", objects, rgb.cols, rgb.rows);
             sort_reading_order(objects);
+            dump_objects("SORTED", objects, rgb.cols, rgb.rows);
             result = objects_to_text(objects, rgb.cols);
         }
     }

@@ -18,15 +18,14 @@
 
 - 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。全屏预览 + 半透明结果卡片，不再有取景框遮挡。
 - **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义 `OcrEngine` 接口，`OcrEngineRegistry` 负责注册与创建，引擎用 `OcrEngineSpec` + `OcrFieldSpec` 自描述配置项，因此新增一个模型**只需注册一个 provider**，面板、设置界面与输入法框架零改动。
-- **内置 6 种后端，可在 设置 → OCR 识别引擎 中手动切换**：
+- **内置 5 种后端，可在 设置 → OCR 识别引擎 中手动切换**（列表顺序即常用程度，本地与局域网的排前面）：
 
   | 引擎 | 类型 | 说明 |
   |---|---|---|
   | Tesseract 5（默认） | 本地 · 隐私友好 | `tesseract4android` AAR 内置于 `app/libs/`，离线可用、图片不出手机；`assets/tessdata/` 下的 `chi_sim`+`eng`（tessdata_fast）首次使用时释放到 App 私有目录 |
+  | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」（首页右上角 WIFI 按钮开启）。复刻官方 Web UI 的端点：`POST /files`（multipart `fileName` + `newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>` → `POST /filesResult` 取 `result`，**无鉴权**。见下方「白描手机 WiFi 传输」小节 |
   | 百度智能云 OCR | 云端 · 功能强 | AK/SK 换取 access_token，默认 `accurate_basic` 高精度版 |
   | 腾讯云 OCR | 云端 · 功能强 | TC3-HMAC-SHA256 签名，默认 `GeneralAccurateOCR` |
-  | 白描（桌面版） | 局域网 | 官方「本地服务器模式」([API.md](https://github.com/baimiaoapp/baimiao-desktop/blob/main/API.md))：`POST {地址}/ocr`，form-data 字段 `image`（或 `b64`）+ 可选 `lang`，响应 `data.text_all`，**无鉴权**。默认监听 `0.0.0.0:8888`，端口可在客户端设置里改（如 51314） |
-  | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」（首页右上角 WIFI 按钮开启）。复刻官方 Web UI 的端点：`POST /files`（multipart `fileName` + `newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>` → `POST /filesResult` 取 `result`，**无鉴权**。见下方「白描手机 WiFi 传输」小节 |
   | 自定义 HTTP 接口 | 任意 | 自己填 URL / 请求头 / 请求体模板（`{base64}` 占位）/ 结果 JSON 路径，可对接任何服务商 |
 
 #### 白描手机 WiFi 传输（实测端点）
@@ -42,7 +41,7 @@
 | POST | `/fileAllDelete` | `_method=delete` | 清空列表 |
 
 - 文件 `status`：`0` 未识别 / `1` 识别中 / `2` 已识别 / `3` 识别失败；全局 `recognizeStatus` 同理。
-- **同名上传会覆盖**，引擎默认用固定名 `fcitx5-ocr.jpg`，因此列表不会堆积（官方 UI 上限 50 张）。
+- **同名上传会覆盖但不会重置识别状态**，所以引擎每次都用唯一名 `fcitx5-ocr-<时间戳>.jpg`；自己堆积到 12 张时才整表清理（官方 UI 上限 50 张）。
 - 实测限制：`fileDelete`（单张删除）在现行版本是空操作，所以可选的「识别后清空列表」走的是 `fileAllDelete`。
 - 实测限制：官方说明要求白描保持前台；后台时服务可能被回收，此时会报连接失败/超时。
 - 实测限制：扩展名必须与图片内容一致（PNG 内容命名成 `.jpg` 会一直停在 `status=0`）；引擎固定上传 JPEG + `.jpg`。

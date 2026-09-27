@@ -169,13 +169,21 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
             background = roundedDrawable(Color.argb(235, 30, 30, 30), dp(12).toFloat())
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
+        // 引擎多了以后列表会顶出面板，而 IME 里不能弹 Dialog/PopupWindow（会抢焦点
+        // 拆掉键盘），所以自己套一个限高的 ScrollView：超出的部分可以滚动。
+        val engineMenuScroll = MaxHeightScrollView(context, context.dp(ENGINE_MENU_MAX_DP)).apply {
+            isVerticalScrollBarEnabled = false
+            addView(engineMenuList, FrameLayout.LayoutParams(wrapContent, wrapContent).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            })
+        }
         val scrim = View(context).apply {
             setBackgroundColor(Color.argb(90, 0, 0, 0))
             setOnClickListener { hideEngineMenu() }
         }
         engineMenu = context.frameLayout {
             add(scrim, lParams(matchParent, matchParent))
-            add(engineMenuList, lParams(wrapContent, wrapContent) {
+            add(engineMenuScroll, lParams(wrapContent, wrapContent) {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 topMargin = dp(54)
             })
@@ -482,5 +490,15 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
 
     companion object {
         private const val RESULT_CARD_DP = 110
+        /** 引擎浮层的最大高度，超出后可滚动（保证不会顶出 IME 面板） */
+        private const val ENGINE_MENU_MAX_DP = 240
+    }
+}
+
+/** ScrollView that never grows past [maxHeightPx], so long lists stay inside the panel. */
+private class MaxHeightScrollView(context: Context, private val maxHeightPx: Int) :
+    ScrollView(context) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST))
     }
 }

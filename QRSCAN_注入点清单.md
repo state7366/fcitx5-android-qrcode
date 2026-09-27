@@ -75,7 +75,7 @@
 | `.../input/ocr/OcrEngineRegistry.kt` | 新增：引擎注册表（含 `specs()` 供设置界面渲染）；换模型只需再注册一个 provider |
 | `.../input/ocr/OcrConfig.kt` | 新增：`OcrConfig` / `OcrFieldSpec` / `OcrEngineSpec` / `OcrConfigStore`（`ocr-config.json`，含导入导出序列化） |
 | `.../input/ocr/TesseractOcrEngine.kt` | 新增：本地离线模型（Tesseract 5 + Leptonica）+ `TesseractProvider` |
-| `.../input/ocr/RemoteOcrEngines.kt` | 新增：`HttpOcrEngine` 基类 + 百度 / 腾讯云(TC3 签名) / 白描自建服务 / 自定义 HTTP 四个后端及其 provider |
+| `.../input/ocr/RemoteOcrEngines.kt` | 新增：`HttpOcrEngine` 基类 + 百度 / 腾讯云(TC3 签名) / 白描手机 WiFi / 自定义 HTTP 四个后端及其 provider |
 | `.../ui/main/settings/ocr/OcrSettingsFragment.kt` | 新增：引擎选择器 + 按 `OcrEngineSpec.fields` 动态生成表单 + 配置导入导出（SAF） |
 | `.../ui/main/settings/SettingsRoute.kt` | `SettingsRoute.Ocr` + `createGraph` 里 `fragment<OcrSettingsFragment, Ocr>` |
 | `.../ui/main/MainFragment.kt` | Android 分类下新增「OCR 识别引擎」入口 |
@@ -94,7 +94,7 @@
 ## 换 / 加模型的方法（抽象层用途）
 
 1. 写 `XxxOcrEngine : OcrEngine` + `XxxProvider : OcrEngineProvider`（`spec` 里声明 `OcrEngineSpec` 与 `fields`，设置界面会自动生成表单，无需改 UI）；
-2. 在 `OcrEngineRegistry.init` 里 `register(XxxProvider)`（或运行时调用 `register`）；
+2. 在 `OcrEngineRegistry.init` 里 `register(XxxProvider)`（或运行时调用 `register`）；**注册顺序就是设置界面/面板里的显示顺序**，常用的往前放；
 3. `OcrConfigStore` 里存的是 `engineId + params`，用户在设置界面选中该引擎即可。OcrScanWindow / 输入法框架 / 构建接线**无需改动**。
 
 ## 已内置后端
@@ -104,6 +104,5 @@
 | `tesseract` | Tesseract 5（默认） | 本地 · 隐私友好 | 内置 `chi_sim`+`eng` 训练数据，图片不出手机 |
 | `baidu` | 百度智能云 OCR | 云端 | AK/SK → access_token → `accurate_basic` |
 | `tencent` | 腾讯云 OCR | 云端 | TC3-HMAC-SHA256 签名，`GeneralAccurateOCR` |
-| `baimiao` | 白描（桌面版） | 局域网 | 官方「本地服务器模式」`POST {baseUrl}/ocr`，form-data `image` / `b64` + `lang`，响应 `data.text_all`，无鉴权；默认端口 8888（客户端设置可改） |
-| `baimiao-wifi` | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」：`POST /files`（multipart `fileName`+`newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>`（`status` 2 完成 / 3 失败）→ `POST /filesResult` 取 `result`；同名覆盖，默认 `fcitx5-ocr.jpg`；无鉴权 |
+| `baimiao-wifi` | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」：`POST /files`（multipart `fileName`+`newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>`（`status` 2 完成 / 3 失败）→ `POST /filesResult` 取 `result`；每次唯一文件名 `前缀-时间戳.jpg`；无鉴权 |
 | `custom` | 自定义 HTTP 接口 | 任意 | 自行定义 URL / headers / 请求体模板（`{base64}`）/ 结果 JSON 路径 |

@@ -20,14 +20,12 @@ object OcrEngineRegistry {
     private val providers = linkedMapOf<String, OcrEngineProvider>()
 
     init {
-        // Local, privacy friendly
+        // 常用的排前面：本地离线、以及手机端白描的局域网服务
         register(TesseractProvider)
+        register(BaimiaoWifiProvider)
         // Cloud / self-hosted
         register(BaiduProvider)
         register(TencentProvider)
-        register(BaimiaoProvider)
-        // 白描 Android 端「WiFi 传输识别」（局域网）
-        register(BaimiaoWifiProvider)
         register(CustomHttpProvider)
     }
 

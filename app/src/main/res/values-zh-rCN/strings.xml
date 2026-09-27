@@ -321,4 +321,17 @@
     <string name="keyboard_height_percent_base">键盘高度百分比</string>
     <string name="display_metrics">显示指标 (Resources.getDisplayMetrics)</string>
     <string name="real_size">真实尺寸 (Display.getRealSize)</string>
+    <string name="ocr_scan">OCR 文字识别</string>
+    <string name="ocr_permission_required">需要相机权限才能识别文字</string>
+    <string name="ocr_camera_error">无法打开相机</string>
+    <string name="ocr_scan_hint">对准文字后点击「拍照识别」</string>
+    <string name="ocr_capture">拍照识别</string>
+    <string name="ocr_commit">上屏</string>
+    <string name="ocr_copy">复制</string>
+    <string name="ocr_recognizing">识别中…</string>
+    <string name="ocr_recognized">识别完成，可上屏或复制</string>
+    <string name="ocr_result_empty">未识别到文字</string>
+    <string name="ocr_committed">已上屏</string>
+    <string name="ocr_copied">已复制</string>
+    <string name="ocr_engine_unavailable">OCR 引擎不可用（缺少语言数据）</string>
 </resources>

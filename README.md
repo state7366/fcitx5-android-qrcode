@@ -14,7 +14,14 @@
 - 所有对上游代码的侵入性修改均以 `QRSCAN-BEGIN` / `QRSCAN-END` 注释标记，便于日后合并上游更新；完整清单见 [QRSCAN_注入点清单.md](QRSCAN_注入点清单.md)。
 - applicationId 改为 `org.fcitx.fcitx5.android.qrscan`，可与官方版共存安装。
 
-### 2. Windows 构建体系加固（对上游构建脚本的改进）
+### 2. OCR 文字识别输入法（`OCRSCAN`）
+
+- 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。
+- **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义接口，`OcrEngineRegistry` 负责注册与创建，因此将来换模型（PaddleOCR / ONNX / ML Kit / 远端服务）只需新增一个 `OcrEngineProvider`，面板与输入法框架零改动。
+- 当前接入的模型：**Tesseract 5 + Leptonica**（`tesseract4android` AAR，内置于 `app/libs/`，离线可用，无 JitPack / GMS 依赖）；语言数据为 `assets/tessdata/` 下的 `chi_sim` + `eng`（tessdata_fast），首次使用时释放到 App 私有目录。
+- 同样需在 fcitx **设置 → 输入法 → 添加** 中启用 "OCR Text Scanner" 才能使用。
+
+### 3. Windows 构建体系加固（对上游构建脚本的改进）
 
 上游构建在 Windows 上需要手工安装 MSYS2/ECM/gettext 并配置环境变量，本仓库将这些依赖内化，**全新克隆后仅需 Python 3.10+ 在 PATH 中**即可构建：
 

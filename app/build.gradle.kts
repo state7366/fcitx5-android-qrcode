@@ -33,7 +33,9 @@ android {
                     "androidkeyboard",
                     "androidnotification",
                     // QRSCAN: stub engine; must be listed here or AGP won't build/package it
-                    "qrcode"
+                    "qrcode",
+                    // OCRSCAN: stub engine, same rationale as qrcode
+                    "ocr"
                 )
             }
         }
@@ -135,6 +137,12 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.zxing.core)
+    // OCRSCAN: Tesseract OCR engine (Tesseract 5 + Leptonica, self-contained AAR).
+    // Vendored locally instead of pulled from JitPack: this project sets
+    // RepositoriesMode.FAIL_ON_PROJECT_REPOS, and a local AAR keeps fresh clones
+    // buildable offline (same rationale as tools/ecm and tools/gettext).
+    // NOTE: >= 4.8.0 is required for 16KB page-size support on Android 15+.
+    implementation(files("libs/tesseract4android-4.8.0.aar"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)

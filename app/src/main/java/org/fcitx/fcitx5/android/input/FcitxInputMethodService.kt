@@ -67,6 +67,7 @@ import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.qrscan.QrScanWindow
+import org.fcitx.fcitx5.android.input.ocr.OcrScanWindow // OCRSCAN
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -318,7 +319,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // The system subtype is deliberately NOT synced to qrcode — it always stays
                 // on the real text input method, so Android-side IME state is never polluted
                 // by the pseudo input method.
-                if (event.data.uniqueName == SubtypeManager.QRCODE_SUBTYPE) {
+                // OCRSCAN: the "ocr" engine is a stub too, handled by the same
+                // scan-panel mechanism as "qrcode".
+                val scanPanel = when (event.data.uniqueName) {
+                    SubtypeManager.QRCODE_SUBTYPE -> ScanPanel.QR
+                    SubtypeManager.OCR_SUBTYPE -> ScanPanel.OCR
+                    else -> null
+                }
+                if (scanPanel != null) {
                     // Lock the switch-back target NOW. With the enumerate-style switch key,
                     // users often pass through intermediate IMs to reach qrcode (e.g.
                     // english -> shuangpin -> qrcode). If the last real IM was only active
@@ -326,7 +334,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // Cancel returns to where the user was actually working.
                     val now = SystemClock.uptimeMillis()
                     val last = realImHistory.lastOrNull()
-                    lastRealImBeforeQrScan =
+                    lastRealImBeforeScan =
                         if (last != null && realImHistory.size >= 2 &&
                             now - last.activatedAtMs < QR_SWITCHBACK_TRANSIENT_MS
                         ) {
@@ -335,10 +343,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                             last?.uniqueName
                         }
                     inputView?.let {
-                        if (it.windowManager.current !is QrScanWindow) {
-                            it.windowManager.attachWindow(QrScanWindow())
+                        val target = when (scanPanel) {
+                            ScanPanel.QR -> QrScanWindow()
+                            ScanPanel.OCR -> OcrScanWindow()
                         }
-                    } ?: run { pendingQrScan = true }
+                        if (it.windowManager.current !is QrScanWindow &&
+                            it.windowManager.current !is OcrScanWindow
+                        ) {
+                            it.windowManager.attachWindow(target)
+                        }
+                    } ?: run { pendingScanPanel = scanPanel }
                     return
                 }
                 run {
@@ -350,8 +364,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                         }
                     }
                 }
-                if (inputView?.windowManager?.current is QrScanWindow) {
-                    pendingQrScan = false
+                // OCRSCAN: leaving either scan panel returns to the keyboard
+                if (inputView?.windowManager?.current is QrScanWindow ||
+                    inputView?.windowManager?.current is OcrScanWindow
+                ) {
+                    pendingScanPanel = null
                     inputView?.windowManager?.attachWindow(KeyboardWindow)
                 }
                 // QRSCAN-END
@@ -735,9 +752,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 val subtype = inputMethodManager.currentInputMethodSubtype ?: return
                 val im = SubtypeManager.inputMethodOf(subtype)
-                // QR scan subtype is not a fcitx input method; don't try to activate it
-                if (im == SubtypeManager.QRCODE_SUBTYPE) {
-                    pendingQrScan = true
+                // scan subtypes (qrcode/ocr) are not fcitx input methods; don't
+                // try to activate them, just flag the panel to open
+                // OCRSCAN: same handling for the ocr subtype
+                pendingScanPanel = when (im) {
+                    SubtypeManager.QRCODE_SUBTYPE -> ScanPanel.QR
+                    SubtypeManager.OCR_SUBTYPE -> ScanPanel.OCR
+                    else -> null
+                }
+                if (pendingScanPanel != null) {
                     return
                 }
                 postFcitxJob {
@@ -756,21 +779,25 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      */
     private var skipNextSubtypeChange: String? = null
 
-    // QRSCAN-BEGIN: QR scan mode state.
-    /**
-     * Set when fcitx switched to the "qrcode" engine while no [InputView] exists yet;
-     * consumed by [InputView.startInput] to open the QR scan window instead of the keyboard.
-     */
-    @Volatile
-    var pendingQrScan: Boolean = false
+    // QRSCAN-BEGIN / OCRSCAN: camera scan panel state, shared by QR and OCR.
+    /** Which camera panel the pseudo input method ("qrcode"/"ocr") stands for. */
+    enum class ScanPanel { QR, OCR }
 
     /**
-     * The switch-back target when leaving QR scan mode, computed and locked at the moment
-     * the qrcode engine activates (see IMChangeEvent handler). Null until computed;
-     * "keyboard-us" is the safe fallback (fcitx's always-present default).
+     * Set when fcitx switched to a scan engine ("qrcode"/"ocr") while no [InputView]
+     * exists yet; consumed by [InputView.startInput] to open the matching scan window
+     * instead of the keyboard.
      */
     @Volatile
-    internal var lastRealImBeforeQrScan: String? = null
+    var pendingScanPanel: ScanPanel? = null
+
+    /**
+     * The switch-back target when leaving a scan panel, computed and locked at the
+     * moment the scan engine activates (see IMChangeEvent handler). Null until
+     * computed; "keyboard-us" is the safe fallback (fcitx's always-present default).
+     */
+    @Volatile
+    internal var lastRealImBeforeScan: String? = null
 
     /** (uniqueName, activation time) of recently activated real input methods, oldest first. */
     private data class RealImRecord(val uniqueName: String, val activatedAtMs: Long)
@@ -786,13 +813,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // SubtypeManager.syncWith once the user enables the qrcode engine) only means
         // "switch fcitx to the qrcode engine". The IMChangeEvent handler opens the scan
         // panel — single source of truth.
-        if (im == SubtypeManager.QRCODE_SUBTYPE) {
-            postFcitxJob { activateIme(SubtypeManager.QRCODE_SUBTYPE) }
+        if (im == SubtypeManager.QRCODE_SUBTYPE || im == SubtypeManager.OCR_SUBTYPE) {
+            postFcitxJob { activateIme(im) }
             return
         }
-        // QRSCAN-END
-        // real subtype selected by user (or our own switch-back): leave QR scan mode
-        pendingQrScan = false
+        // QRSCAN-END / OCRSCAN-END
+        // real subtype selected by user (or our own switch-back): leave scan mode
+        pendingScanPanel = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // don't change input method if this "subtype change" was our notify to system
             // see [^1]
@@ -1137,10 +1164,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Attaching KeyboardWindow detaches QrScanWindow, which releases the camera in its
         // onDetached. Without this, the IME could come back in an inconsistent state where
         // the keyboard never shows again.
-        if (pendingQrScan || inputView?.windowManager?.current is QrScanWindow) {
-            Timber.d("onFinishInputView: leaving QR scan mode on hide")
-            pendingQrScan = false
-            postFcitxJob { activateIme(lastRealImBeforeQrScan ?: "keyboard-us") }
+        if (pendingScanPanel != null ||
+            inputView?.windowManager?.current is QrScanWindow ||
+            inputView?.windowManager?.current is OcrScanWindow
+        ) {
+            Timber.d("onFinishInputView: leaving scan mode on hide")
+            pendingScanPanel = null
+            postFcitxJob { activateIme(lastRealImBeforeScan ?: "keyboard-us") }
             inputView?.windowManager?.attachWindow(KeyboardWindow)
         }
         // QRSCAN-END

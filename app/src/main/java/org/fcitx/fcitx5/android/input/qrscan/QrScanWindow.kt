@@ -178,7 +178,7 @@ class QrScanWindow : InputWindow.ExtendedInputWindow<QrScanWindow>() {
         cameraProvider = null
         scanned = false
         lastCommitted = null
-        service.pendingQrScan = false
+        service.pendingScanPanel = null
     }
 
     private fun hasCameraPermission(): Boolean =
@@ -275,7 +275,7 @@ class QrScanWindow : InputWindow.ExtendedInputWindow<QrScanWindow>() {
             // via this window's onDetached
             returnToKeyboard()
             service.postFcitxJob {
-                activateIme(service.lastRealImBeforeQrScan ?: "keyboard-us")
+                activateIme(service.lastRealImBeforeScan ?: "keyboard-us")
             }
         }
     }

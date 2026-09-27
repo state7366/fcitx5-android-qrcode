@@ -38,6 +38,7 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSiz
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.qrscan.QrScanWindow
+import org.fcitx.fcitx5.android.input.ocr.OcrScanWindow // OCRSCAN
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
@@ -337,12 +338,26 @@ class InputView(
         // qrcode engine — not just when a pending flag was set. Querying fcitx state
         // directly also covers service restarts where the IMChangeEvent was missed
         // (eventFlow has no replay).
-        val qrScanActive = service.pendingQrScan ||
-            fcitx.runImmediately { inputMethodEntryCached.uniqueName } == SubtypeManager.QRCODE_SUBTYPE
-        if (qrScanActive) {
-            windowManager.attachWindow(QrScanWindow())
-            service.pendingQrScan = false
-        } else if (focusChangeResetKeyboard || !restarting || windowManager.current is QrScanWindow) {
+        // OCRSCAN: both scan engines resolve to a camera panel here
+        val scanPanel = service.pendingScanPanel ?: run {
+            val im = fcitx.runImmediately { inputMethodEntryCached.uniqueName }
+            when (im) {
+                SubtypeManager.QRCODE_SUBTYPE -> FcitxInputMethodService.ScanPanel.QR
+                SubtypeManager.OCR_SUBTYPE -> FcitxInputMethodService.ScanPanel.OCR
+                else -> null
+            }
+        }
+        if (scanPanel != null) {
+            windowManager.attachWindow(
+                when (scanPanel) {
+                    FcitxInputMethodService.ScanPanel.QR -> QrScanWindow()
+                    FcitxInputMethodService.ScanPanel.OCR -> OcrScanWindow()
+                }
+            )
+            service.pendingScanPanel = null
+        } else if (focusChangeResetKeyboard || !restarting ||
+            windowManager.current is QrScanWindow || windowManager.current is OcrScanWindow
+        ) {
             // The QrScanWindow check is a safety net: if the QR panel somehow survived an
             // IME hide/show cycle while fcitx is on a real input method, never come back to
             // a stale camera panel — always show the keyboard.

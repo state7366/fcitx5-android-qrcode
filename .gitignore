@@ -27,6 +27,10 @@
 *.aar
 *.ap_
 *.aab
+# OCRSCAN: the vendored Tesseract AAR in app/libs/ is a source dependency, not a
+# build output -- without this exception it is silently excluded from git, and
+# fresh clones then fail to configure (same trap as /app/src/main/assets/usr/).
+!app/libs/*.aar
 
 # Files for the ART/Dalvik VM
 *.dex

@@ -17,6 +17,9 @@ object SubtypeManager {
 
     const val QRCODE_SUBTYPE = "qrcode"
 
+    // OCRSCAN: same pseudo-subtype mechanism as QRCODE_SUBTYPE
+    const val OCR_SUBTYPE = "ocr"
+
     private const val MODE_KEYBOARD = "keyboard"
 
     private const val IM_KEYBOARD = "keyboard-us"

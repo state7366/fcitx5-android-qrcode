@@ -313,6 +313,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                     // Requires "QR Code Scanner" to be enabled in fcitx input method list.
                     service.postFcitxJob { activateIme(SubtypeManager.QRCODE_SUBTYPE) }
                 }
+                ocrScanButton.setOnClickListener {
+                    // OCRSCAN: same mechanism, for the "ocr" engine.
+                    // Requires "OCR Text Scanner" to be enabled in fcitx input method list.
+                    service.postFcitxJob { activateIme(SubtypeManager.OCR_SUBTYPE) }
+                }
             }
             clipboardUi.suggestionView.apply {
                 setOnClickListener {

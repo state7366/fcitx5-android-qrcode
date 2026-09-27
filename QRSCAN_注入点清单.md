@@ -56,3 +56,36 @@
 3. 若上游改动了 IMChangeEvent 分支结构，把 QRSCAN 块重新移植到「分支最前面」。
 4. `git grep -n QRSCAN` 复查注入点数量与本表一致。
 5. 构建 + 真机回归：切换图标切入/切出、持续扫描、Cancel、隐藏后恢复。
+
+---
+
+# 五、OCRSCAN（第二个扫描面板，二维码之外新增）
+
+标记关键字 `OCRSCAN`，与 QRSCAN 平行、互不干扰。
+
+| 文件 | 注入点 |
+|---|---|
+| `app/src/main/cpp/ocr/ocr.cpp` | 新增：桩引擎，`InputMethodEntry("ocr","OCR Text Scanner","zh_CN","ocr")`，`keyEvent()` 吞键 |
+| `app/src/main/cpp/ocr/ocr-addon.conf` / `ocr-inputmethod.conf` | 新增：经 `install(... COMPONENT config)` 装进 APK assets（**勿直接提交 assets/usr 下的文件，该目录被 gitignore**） |
+| `app/src/main/cpp/ocr/CMakeLists.txt` | 新增：`add_library(ocr MODULE ocr.cpp)` + 两条 conf install 规则 |
+| `app/src/main/cpp/CMakeLists.txt` | `add_subdirectory(ocr) # OCRSCAN` |
+| `app/build.gradle.kts` | `cmake.targets` 增 `"ocr"`；`dependencies` 增 `implementation(files("libs/tesseract4android-4.8.0.aar"))` |
+| `.gitignore` | `*.aar` 例外 `!app/libs/*.aar`（否则内置 AAR 不进 git，全新克隆构建失败） |
+| `app/src/main/java/.../input/ocr/OcrEngine.kt` | 新增：**OCR 引擎抽象层**——`OcrEngine` 接口 + `OcrResult` + `OcrEngineProvider` |
+| `.../input/ocr/OcrEngineRegistry.kt` | 新增：引擎注册表；换模型只需再注册一个 provider |
+| `.../input/ocr/TesseractOcrEngine.kt` | 新增：当前唯一接入的模型（Tesseract 5 + Leptonica）+ `TesseractProvider` |
+| `.../input/ocr/TessDataInstaller.kt` | 新增：把 `assets/tessdata` 下的训练数据拷到 app 私有目录（native 读不到 APK 内 assets） |
+| `.../input/ocr/OcrScanWindow.kt` | 新增：相机面板；单拍识别（拍照→识别→上屏/复制），非逐帧 |
+| `app/src/main/java/.../core/SubtypeManager.kt` | `OCR_SUBTYPE = "ocr"` |
+| `.../input/FcitxInputMethodService.kt` | 扫描面板状态**泛化**：`pendingQrScan: Boolean` → `pendingScanPanel: ScanPanel?`（`ScanPanel{QR,OCR}`）；`lastRealImBeforeQrScan` → `lastRealImBeforeScan` |
+| `.../input/InputView.kt` | `startInput` 按当前 IM / pending 标志决定挂 QrScanWindow 还是 OcrScanWindow |
+| `.../input/qrscan/QrScanWindow.kt` | 仅字段名跟随泛化（`pendingScanPanel` / `lastRealImBeforeScan`） |
+| `.../input/bar/ui/idle/ButtonsBarUi.kt` + `bar/KawaiiBarComponent.kt` | 工具栏新增 OCR 按钮（`ic_ocr_scan`），点击 `activateIme(OCR_SUBTYPE)` |
+| `res/values/strings.xml`、`res/values-zh-rCN/strings.xml` | `ocr_*` 文案 |
+| `res/drawable/ic_ocr_scan.xml` | 新增图标 |
+
+## 换模型的方法（抽象层用途）
+
+1. 写 `XxxOcrEngine : OcrEngine` + `XxxProvider : OcrEngineProvider`；
+2. 在 `OcrEngineRegistry.init` 里 `register(XxxProvider)`（或运行时调用 `register`）；
+3. `OcrEngineRegistry.create(context, id)` 传对应 id 即可。OcrScanWindow / 输入法框架 / 构建接线**无需改动**。

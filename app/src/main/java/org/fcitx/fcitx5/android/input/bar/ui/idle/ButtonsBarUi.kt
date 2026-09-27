@@ -52,4 +52,9 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.qr_scan)
     }
 
+    // OCRSCAN: toolbar entry for the OCR text-recognition input method
+    val ocrScanButton = toolButton(R.drawable.ic_ocr_scan).apply {
+        contentDescription = ctx.getString(R.string.ocr_scan)
+    }
+
 }

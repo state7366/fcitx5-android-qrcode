@@ -20,7 +20,8 @@ object OcrEngineRegistry {
     private val providers = linkedMapOf<String, OcrEngineProvider>()
 
     init {
-        // 常用的排前面：本地离线、以及手机端白描的局域网服务
+        // 本地离线引擎排最前，且 PP-OCRv5（ncnn）作为中文识别精度最高的引擎置顶。
+        register(PpOcrV5Provider)
         register(TesseractProvider)
         register(BaimiaoWifiProvider)
         // Cloud / self-hosted

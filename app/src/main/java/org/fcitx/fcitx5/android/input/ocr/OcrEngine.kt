@@ -44,6 +44,13 @@ interface OcrEngine {
     fun prepare(context: Context): Boolean
 
     /**
+     * OCRSCAN: human-readable reason for the last failed [prepare] (e.g. the
+     * external model pack has not been downloaded yet), or null. Shown in the
+     * scan panel's status line so the user knows what to fix.
+     */
+    val prepareError: String? get() = null
+
+    /**
      * Recognize text from a still image. Called off the main thread, after a
      * successful [prepare].
      */

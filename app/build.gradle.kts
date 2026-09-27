@@ -35,7 +35,10 @@ android {
                     // QRSCAN: stub engine; must be listed here or AGP won't build/package it
                     "qrcode",
                     // OCRSCAN: stub engine, same rationale as qrcode
-                    "ocr"
+                    "ocr",
+                    // OCRSCAN: on-device PP-OCRv5 (ncnn) recognizer; lazily loaded
+                    // by PpOcrV5Native so only users who enable the engine pay for it
+                    "ppocrv5"
                 )
             }
         }

@@ -9,15 +9,19 @@ import timber.log.Timber
 import java.io.File
 
 /**
- * OCRSCAN: extracts the bundled traineddata models under `assets/tessdata`
- * into app-private storage.
+ * OCRSCAN: locates the Tesseract traineddata directory.
  *
- * Tesseract's `init(datapath, languages)` expects `datapath` to contain a
- * directory literally named `tessdata`; assets inside the APK are not reachable
- * by native code, so the models must be copied out once.
+ * Models are no longer bundled in the APK (the user asked that all models be
+ * external). They live under `/sdcard/Android/data/<pkg>/files/ocr-models/tessdata`
+ * and must be downloaded or pushed manually (see [OcrModelStore]). Tesseract's
+ * `init(datapath, languages)` expects `datapath` to contain a directory literally
+ * named `tessdata`, so we return the *parent* of that folder as `datapath`.
+ *
+ * A legacy fallback to `assets/tessdata` is kept for local developer builds that
+ * still vendor the files, but fresh installs get them from [OcrModelStore].
  *
  * @return the directory to pass as `datapath` (parent of `tessdata`), or null
- * when no traineddata is bundled
+ * when no traineddata is found
  */
 object TessDataInstaller {
 
@@ -25,35 +29,45 @@ object TessDataInstaller {
     private const val SUFFIX = ".traineddata"
 
     fun install(context: Context): File? {
-        val base = File(context.filesDir, "tesseract")
-        val dir = File(base, ASSET_DIR)
+        // 1) External model pack (preferred): ocr-models/tessdata/<*.traineddata>
+        val extDir = OcrModelStore.dirFor(context, ASSET_DIR)
+        if (extDir.exists()) {
+            val names = extDir.list { _, n -> n.endsWith(SUFFIX) }
+            if (!names.isNullOrEmpty() && names.all { File(extDir, it).length() > 0L }) {
+                Timber.d("TessDataInstaller: using external tessdata at ${extDir.absolutePath}")
+                return extDir.parentFile
+            }
+        }
+        // 2) Legacy assets fallback (developer builds that still bundle them)
         val names = context.assets.list(ASSET_DIR)
-        if (names.isNullOrEmpty()) {
-            Timber.e("TessDataInstaller: assets/$ASSET_DIR is empty")
-            return null
-        }
-        if (!dir.exists() && !dir.mkdirs()) {
-            Timber.e("TessDataInstaller: cannot create ${dir.absolutePath}")
-            return null
-        }
-        var installed = 0
-        names.filter { it.endsWith(SUFFIX) }.forEach { name ->
-            val out = File(dir, name)
-            if (out.exists() && out.length() > 0L) {
-                installed++
-                return@forEach
+        if (!names.isNullOrEmpty()) {
+            val base = File(context.filesDir, "tesseract")
+            val dir = File(base, ASSET_DIR)
+            if (!dir.exists() && !dir.mkdirs()) {
+                Timber.e("TessDataInstaller: cannot create ${dir.absolutePath}")
+                return null
             }
-            runCatching {
-                context.assets.open("$ASSET_DIR/$name").use { input ->
-                    out.outputStream().use { output -> input.copyTo(output) }
+            var installed = 0
+            names.filter { it.endsWith(SUFFIX) }.forEach { name ->
+                val out = File(dir, name)
+                if (out.exists() && out.length() > 0L) {
+                    installed++
+                    return@forEach
                 }
-                installed++
-                Timber.d("TessDataInstaller: installed $name (${out.length()} bytes)")
-            }.onFailure {
-                Timber.e(it, "TessDataInstaller: failed to extract $name")
-                out.delete()
+                runCatching {
+                    context.assets.open("$ASSET_DIR/$name").use { input ->
+                        out.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    installed++
+                    Timber.d("TessDataInstaller: installed $name (${out.length()} bytes)")
+                }.onFailure {
+                    Timber.e(it, "TessDataInstaller: failed to extract $name")
+                    out.delete()
+                }
             }
+            if (installed > 0) return base
         }
-        return if (installed > 0) base else null
+        Timber.e("TessDataInstaller: no tessdata found (external or assets)")
+        return null
     }
 }

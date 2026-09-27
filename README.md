@@ -18,15 +18,49 @@
 
 - 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。全屏预览 + 半透明结果卡片，不再有取景框遮挡。
 - **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义 `OcrEngine` 接口，`OcrEngineRegistry` 负责注册与创建，引擎用 `OcrEngineSpec` + `OcrFieldSpec` 自描述配置项，因此新增一个模型**只需注册一个 provider**，面板、设置界面与输入法框架零改动。
-- **内置 5 种后端，可在 设置 → OCR 识别引擎 中手动切换**（列表顺序即常用程度，本地与局域网的排前面）：
+- **内置 6 种后端，可在 设置 → OCR 识别引擎 中手动切换**（列表顺序即常用程度，本地与局域网的排前面）：
 
   | 引擎 | 类型 | 说明 |
   |---|---|---|
-  | Tesseract 5（默认） | 本地 · 隐私友好 | `tesseract4android` AAR 内置于 `app/libs/`，离线可用、图片不出手机；`assets/tessdata/` 下的 `chi_sim`+`eng`（tessdata_fast）首次使用时释放到 App 私有目录 |
+  | PP-OCRv5（本地 ncnn） | 本地 · 隐私友好 | 百度飞桨 PP-OCRv5 的 **ncnn** 移植（源自 `nihui/ncnn-android-ppocrv5`，BSD-3）。原生 `libppocrv5.so` 由 `app/src/main/cpp/ppocrv5/` 构建（ncnn 20260526 + opencv-mobile 2.4.13.7 预编译 arm64 静态库，已 vendor 进仓库）。中文印刷体/截图识别在本地引擎里效果最好 |
+  | Tesseract 5 | 本地 · 隐私友好 | `tesseract4android` AAR 内置于 `app/libs/`，离线可用、图片不出手机 |
   | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」（首页右上角 WIFI 按钮开启）。复刻官方 Web UI 的端点：`POST /files`（multipart `fileName` + `newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>` → `POST /filesResult` 取 `result`，**无鉴权**。见下方「白描手机 WiFi 传输」小节 |
   | 百度智能云 OCR | 云端 · 功能强 | AK/SK 换取 access_token，默认 `accurate_basic` 高精度版 |
   | 腾讯云 OCR | 云端 · 功能强 | TC3-HMAC-SHA256 签名，默认 `GeneralAccurateOCR` |
   | 自定义 HTTP 接口 | 任意 | 自己填 URL / 请求头 / 请求体模板（`{base64}` 占位）/ 结果 JSON 路径，可对接任何服务商 |
+
+#### 外置模型（不打包进 APK）与下载链接
+
+所有 OCR 模型都改为**外挂**：APK 不再包含任何模型权重（`assets/tessdata/` 已删除），统一放在
+
+```
+/sdcard/Android/data/org.fcitx.fcitx5.android.qrscan/files/ocr-models/
+```
+
+- **应用内下载**：设置 → OCR 识别引擎 → 「模型（外置）」，点对应条目即开始下载（显示进度百分比），长按可删除已下载模型。
+- **手动放置**：用文件管理器 / `adb push` 把文件放进上面对应子目录即可（目录名必须一致，如 `tessdata/`、`ppocrv5-mobile/`）。
+
+| 模型包 | 子目录 | 大小 | 下载链接 |
+|---|---|---|---|
+| PP-OCRv5 mobile（默认推荐） | `ppocrv5-mobile/` | ~10.6 MB | `https://raw.githubusercontent.com/nihui/ncnn-android-ppocrv5/master/app/src/main/assets/PP_OCRv5_mobile_{det,rec}.ncnn.{param,bin}` |
+| PP-OCRv5 server（高精度，慢） | `ppocrv5-server/` | ~171 MB | `https://raw.githubusercontent.com/nihui/ncnn-android-ppocrv5/master/app/src/main/assets/PP_OCRv5_server_{det,rec}.ncnn.{param,bin}` |
+| Tesseract 语言包 chi_sim+eng | `tessdata/` | ~6.5 MB | `https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata` 、 `https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata` |
+
+> PP-OCRv5 的 ncnn 权重来自 `nihui/ncnn-android-ppocrv5` 仓库 assets（BSD-3，与原生代码同源）；Tesseract 语言包来自官方 `tessdata_fast`。
+
+#### 本地模型的图片预处理
+
+本地引擎（PP-OCRv5）推理前会做**适度预处理**，可在引擎参数「本地预处理」里自由组合：
+
+| 步骤 | 作用 | 默认 |
+|---|---|---|
+| `upscale` | 长边不足 960 时立方插值放大（最多 2×），恢复小字 | ✅ |
+| `clahe` | Lab 空间对 L 通道做限制对比度自适应直方图均衡，提升低对比度文字，不偏色 | ✅ |
+| `sharpen` | 反锐化掩模，改善轻微失焦 | ⬜ |
+| `denoise` | 3×3 中值滤波，改善低光噪点 | ⬜ |
+| `none` | 全部关闭 | — |
+
+实现位于 `app/src/main/cpp/ppocrv5/ppocrv5_preprocess.{h,cpp}`（原生侧做，避免 Bitmap 来回拷贝）。另外「检测缩放边长」可设 640/960/1280，越大越慢但小字更准。
 
 #### 白描手机 WiFi 传输（实测端点）
 

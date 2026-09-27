@@ -10,12 +10,13 @@ import com.googlecode.tesseract.android.TessBaseAPI
 import timber.log.Timber
 
 /**
- * OCRSCAN: Tesseract-based [OcrEngine] (bundled `tesseract4android` AAR, which
+ * OCRSCAN: Tesseract-based [OcrEngine] (vendored `tesseract4android` AAR, which
  * ships Tesseract 5 + Leptonica + libjpeg/libpng as self-contained native libs).
  *
- * Language data (the traineddata models under `assets/tessdata`) is extracted to app-private
- * storage on first use, because Tesseract needs a real filesystem directory
- * named `tessdata` -- files inside the APK cannot be read by native code.
+ * Language data is NOT bundled: it lives in the external model pack directory
+ * (`files/ocr-models/tessdata`, see [OcrModelStore]) and must be downloaded or
+ * pushed manually. A legacy `assets/tessdata` fallback remains for developer
+ * builds that still vendor the files.
  */
 class TesseractOcrEngine(
     private val languages: List<String> = DEFAULT_LANGUAGES
@@ -24,21 +25,29 @@ class TesseractOcrEngine(
     @Volatile
     private var api: TessBaseAPI? = null
 
+    @Volatile
+    private var prepareErr: String? = null
+
+    override val prepareError: String? get() = prepareErr
+
     override val id: String get() = TesseractProvider.ID
 
     override val displayName: String get() = "Tesseract"
 
     override fun prepare(context: Context): Boolean {
         if (api != null) return true
+        prepareErr = null
         val dataPath = TessDataInstaller.install(context)
         if (dataPath == null) {
-            Timber.e("TesseractOcrEngine: no traineddata found in assets/tessdata")
+            prepareErr = "语言数据未下载：tessdata（OCR 设置 → 模型）"
+            Timber.e("TesseractOcrEngine: no traineddata found")
             return false
         }
         val langs = languages.joinToString("+")
         val engine = TessBaseAPI()
         return try {
             if (!engine.init(dataPath.absolutePath, langs)) {
+                prepareErr = "Tesseract 初始化失败（languages=$langs）"
                 Timber.e("TesseractOcrEngine: init failed for languages=$langs")
                 engine.recycle()
                 false
@@ -96,13 +105,13 @@ object TesseractProvider : OcrEngineProvider {
     override val spec: OcrEngineSpec = OcrEngineSpec(
         id = ID,
         displayName = "Tesseract（本地）",
-        description = "完全离线，图片不出手机；中文印刷体效果尚可",
+        description = "完全离线，图片不出手机；中文印刷体效果尚可。语言包已改为外置，需在「模型」中下载",
         local = true,
         fields = listOf(
             OcrFieldSpec(
                 KEY_LANGUAGES, "语言",
                 defaultValue = TesseractOcrEngine.DEFAULT_LANGUAGES.joinToString("+"),
-                hint = "与内置训练数据对应，如 chi_sim+eng"
+                hint = "需与已下载的语言包对应，如 chi_sim+eng"
             )
         )
     )

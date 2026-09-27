@@ -32,6 +32,7 @@ add_subdirectory(androidkeyboard)
 add_subdirectory(androidnotification)
 add_subdirectory(qrcode) # QRSCAN
 add_subdirectory(ocr) # OCRSCAN
+add_subdirectory(ppocrv5) # OCRSCAN: on-device PP-OCRv5 (ncnn) recognizer
 
 # prebuilt libuv
 set(libuv_DIR "${PREBUILT_DIR}/libuv/${ANDROID_ABI}/lib/cmake/libuv")

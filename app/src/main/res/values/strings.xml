@@ -357,4 +357,15 @@
     <string name="ocr_secret_filled">已填写</string>
     <string name="ocr_not_set">未填写</string>
     <string name="ocr_no_params">该引擎无需配置</string>
+    <!-- OCRSCAN: external (out-of-APK) model packs -->
+    <string name="ocr_models">模型（外置，不打包进 APK）</string>
+    <string name="ocr_models_dir_hint">模型目录：%1$s</string>
+    <string name="ocr_model_installed">已安装 · %1$s</string>
+    <string name="ocr_model_not_installed">未安装 · 点击下载（约 %1$s）</string>
+    <string name="ocr_model_downloading">下载中 %1$d%%</string>
+    <string name="ocr_model_downloaded">下载完成：%1$s</string>
+    <string name="ocr_model_delete">删除已下载模型</string>
+    <string name="ocr_model_deleted">已删除：%1$s</string>
+    <string name="ocr_model_manual_hint">也可手动放到上述目录（子目录名需与模型目录一致）</string>
+    <string name="ocr_engine_model_missing">模型未安装，请在 OCR 设置中下载</string>
 </resources>

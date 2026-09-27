@@ -68,15 +68,20 @@
 | `app/src/main/cpp/ocr/ocr.cpp` | 新增：桩引擎，`InputMethodEntry("ocr","OCR Text Scanner","zh_CN","ocr")`，`keyEvent()` 吞键 |
 | `app/src/main/cpp/ocr/ocr-addon.conf` / `ocr-inputmethod.conf` | 新增：经 `install(... COMPONENT config)` 装进 APK assets（**勿直接提交 assets/usr 下的文件，该目录被 gitignore**） |
 | `app/src/main/cpp/ocr/CMakeLists.txt` | 新增：`add_library(ocr MODULE ocr.cpp)` + 两条 conf install 规则 |
-| `app/src/main/cpp/CMakeLists.txt` | `add_subdirectory(ocr) # OCRSCAN` |
-| `app/build.gradle.kts` | `cmake.targets` 增 `"ocr"`；`dependencies` 增 `implementation(files("libs/tesseract4android-4.8.0.aar"))` |
+| `app/src/main/cpp/ppocrv5/` | 新增（OCRSCAN）：**PP-OCRv5 ncnn 本地引擎**——`ppocrv5.{h,cpp}`（移植自 nihui/ncnn-android-ppocrv5，剥离 `draw()`/`myfontface.h`）、`ppocrv5_preprocess.{h,cpp}`（upscale/clahe/sharpen/denoise）、`ppocrv5_jni.cpp`（Bitmap→cv::Mat→detect_and_recognize→按阅读顺序拼文本）、`ppocrv5_stub.cpp`（无预编译库的 ABI 兜底）、`CMakeLists.txt`（手动 IMPORTED opencv_core/imgproc + `find_package(ncnn)`，vendor 于 `prebuilt/arm64-v8a/{ncnn,opencv}`） |
+| `app/src/main/cpp/CMakeLists.txt` | `add_subdirectory(ocr) # OCRSCAN`；`add_subdirectory(ppocrv5) # OCRSCAN` |
+| `app/build.gradle.kts` | `cmake.targets` 增 `"ocr"`、`"ppocrv5"`；`dependencies` 增 `implementation(files("libs/tesseract4android-4.8.0.aar"))` |
 | `.gitignore` | `*.aar` 例外 `!app/libs/*.aar`（否则内置 AAR 不进 git，全新克隆构建失败） |
 | `app/src/main/java/.../input/ocr/OcrEngine.kt` | 新增：**OCR 引擎抽象层**——`OcrEngine` 接口 + `OcrResult` + `OcrEngineProvider` |
 | `.../input/ocr/OcrEngineRegistry.kt` | 新增：引擎注册表（含 `specs()` 供设置界面渲染）；换模型只需再注册一个 provider |
 | `.../input/ocr/OcrConfig.kt` | 新增：`OcrConfig` / `OcrFieldSpec` / `OcrEngineSpec` / `OcrConfigStore`（`ocr-config.json`，含导入导出序列化） |
-| `.../input/ocr/TesseractOcrEngine.kt` | 新增：本地离线模型（Tesseract 5 + Leptonica）+ `TesseractProvider` |
+| `.../input/ocr/TesseractOcrEngine.kt` | 新增：本地离线模型（Tesseract 5 + Leptonica）+ `TesseractProvider`；语言包已改外置（`prepareError` 提示去设置里下载） |
+| `.../input/ocr/PpOcrV5Native.kt` | 新增：`libppocrv5.so` 的 JNI 门面（懒加载，失败/ABI 不支持时 `available()` 返回 false） |
+| `.../input/ocr/PpOcrV5Engine.kt` | 新增：PP-OCRv5 引擎 + `PpOcrV5Provider`（字段：模型目录 / 检测缩放边长 / 线程数 / 本地预处理） |
+| `.../input/ocr/OcrModelStore.kt` | 新增：**外挂模型仓库**——`/sdcard/Android/data/<pkg>/files/ocr-models/<dir>`，内置模型目录（PP-OCRv5 mobile/server、tessdata_fast）+ 直链下载 + 手动放置说明 |
+| `.../input/ocr/TessDataInstaller.kt` | 修改：优先读外挂目录 `ocr-models/tessdata`，`assets/tessdata` 仅作开发者本地兜底 |
 | `.../input/ocr/RemoteOcrEngines.kt` | 新增：`HttpOcrEngine` 基类 + 百度 / 腾讯云(TC3 签名) / 白描手机 WiFi / 自定义 HTTP 四个后端及其 provider |
-| `.../ui/main/settings/ocr/OcrSettingsFragment.kt` | 新增：引擎选择器 + 按 `OcrEngineSpec.fields` 动态生成表单 + 配置导入导出（SAF） |
+| `.../ui/main/settings/ocr/OcrSettingsFragment.kt` | 新增：引擎选择器 + 按 `OcrEngineSpec.fields` 动态生成表单 + **模型管理（下载/删除/显示进度）** + 配置导入导出（SAF） |
 | `.../ui/main/settings/SettingsRoute.kt` | `SettingsRoute.Ocr` + `createGraph` 里 `fragment<OcrSettingsFragment, Ocr>` |
 | `.../ui/main/MainFragment.kt` | Android 分类下新增「OCR 识别引擎」入口 |
 | `AndroidManifest.xml` | 新增 `android.permission.INTERNET`（云端引擎需要）；`android:networkSecurityConfig="@xml/network_security_config"`（局域网明文 HTTP） |
@@ -101,7 +106,8 @@
 
 | id | 名称 | 本地/云端 | 备注 |
 |---|---|---|---|
-| `tesseract` | Tesseract 5（默认） | 本地 · 隐私友好 | 内置 `chi_sim`+`eng` 训练数据，图片不出手机 |
+| `ppocrv5` | PP-OCRv5（本地 ncnn） | 本地 · 隐私友好 | 百度飞桨 PP-OCRv5 ncnn 权重（外置 `ppocrv5-mobile` / `ppocrv5-server`），中文识别效果最好；推理前做适度预处理（upscale/clahe…） |
+| `tesseract` | Tesseract 5 | 本地 · 隐私友好 | 语言包外置于 `ocr-models/tessdata`（chi_sim+eng），图片不出手机 |
 | `baidu` | 百度智能云 OCR | 云端 | AK/SK → access_token → `accurate_basic` |
 | `tencent` | 腾讯云 OCR | 云端 | TC3-HMAC-SHA256 签名，`GeneralAccurateOCR` |
 | `baimiao-wifi` | 白描（手机 WiFi） | 局域网 | 白描 Android 端官方「WiFi 传输识别」：`POST /files`（multipart `fileName`+`newfile`）→ `POST /recognize/all`（`_method=recognize`）→ 轮询 `GET /files?<ts>`（`status` 2 完成 / 3 失败）→ `POST /filesResult` 取 `result`；每次唯一文件名 `前缀-时间戳.jpg`；无鉴权 |

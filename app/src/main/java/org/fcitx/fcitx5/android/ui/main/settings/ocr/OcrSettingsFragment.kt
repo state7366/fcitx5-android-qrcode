@@ -22,7 +22,9 @@ import org.fcitx.fcitx5.android.input.ocr.OcrConfig
 import org.fcitx.fcitx5.android.input.ocr.OcrConfigStore
 import org.fcitx.fcitx5.android.input.ocr.OcrEngineRegistry
 import org.fcitx.fcitx5.android.input.ocr.OcrFieldSpec
+import org.fcitx.fcitx5.android.input.ocr.OcrModelStore
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.utils.LongClickPreference
 import org.fcitx.fcitx5.android.utils.addPreference
 import org.fcitx.fcitx5.android.utils.iso8601UTCDateTime
 import org.fcitx.fcitx5.android.utils.toast
@@ -42,6 +44,7 @@ class OcrSettingsFragment : PaddingPreferenceFragment() {
 
     private lateinit var enginePref: Preference
     private lateinit var paramsCategory: PreferenceCategory
+    private lateinit var modelsCategory: PreferenceCategory
 
     private lateinit var exportLauncher: ActivityResultLauncher<String>
     private lateinit var importLauncher: ActivityResultLauncher<String>
@@ -113,6 +116,11 @@ class OcrSettingsFragment : PaddingPreferenceFragment() {
                 setTitle(R.string.ocr_engine_params)
             }
             addPreference(paramsCategory)
+            // OCRSCAN: out-of-APK model packs (download / delete / manual placement)
+            modelsCategory = PreferenceCategory(ctx).apply {
+                setTitle(R.string.ocr_models)
+            }
+            addPreference(modelsCategory)
             addPreference(R.string.ocr_export_config) {
                 exportLauncher.launch("fcitx5-ocr-config_${iso8601UTCDateTime()}.json")
             }
@@ -122,6 +130,7 @@ class OcrSettingsFragment : PaddingPreferenceFragment() {
         }
         refreshEngineSummary()
         rebuildParams()
+        rebuildModels()
     }
 
     private fun showEnginePicker() {
@@ -198,6 +207,98 @@ class OcrSettingsFragment : PaddingPreferenceFragment() {
     private fun summarize(field: OcrFieldSpec, value: String?): String {
         if (value.isNullOrEmpty()) return getString(R.string.ocr_not_set)
         return if (field.secret) getString(R.string.ocr_secret_filled) else value
+    }
+
+    /**
+     * OCRSCAN: one entry per external model pack with live download progress.
+     * The download runs on IO and only mutates the summary text, so a partially
+     * completed download can simply be retried by tapping again.
+     */
+    private fun rebuildModels() {
+        val ctx = requireContext()
+        modelsCategory.removeAll()
+        modelsCategory.addPreference(
+            getString(R.string.ocr_models_dir_hint, OcrModelStore.rootPath(ctx)),
+            summary = getString(R.string.ocr_model_manual_hint)
+        )
+        OcrModelStore.CATALOG.forEach { pack ->
+            // LongClickPreference: androidx.preference has no long-click API, and
+            // the framework one is API 26+; the view-level helper works everywhere.
+            val pref = LongClickPreference(ctx).apply {
+                isSingleLineTitle = false
+                isIconSpaceReserved = false
+                key = "ocr_model_${pack.id}"
+                title = pack.displayName
+            }
+            modelsCategory.addPreference(pref)
+            refreshModelPref(pref, pack)
+            pref.setOnPreferenceClickListener {
+                if (OcrModelStore.isInstalled(ctx, pack)) {
+                    ctx.toast(
+                        getString(
+                            R.string.ocr_model_installed,
+                            formatBytes(OcrModelStore.installedSize(ctx, pack))
+                        )
+                    )
+                } else {
+                    downloadModel(pack, pref)
+                }
+                true
+            }
+            // Long-press deletes the downloaded weights (a convenience, not a
+            // necessity, so there is no extra confirm dialog beyond the gesture).
+            pref.setOnPreferenceLongClickListener {
+                if (OcrModelStore.isInstalled(ctx, pack)) {
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { OcrModelStore.delete(ctx, pack) }
+                        refreshModelPref(pref, pack)
+                        ctx.toast(getString(R.string.ocr_model_deleted, pack.displayName))
+                    }
+                }
+                true
+            }
+        }
+    }
+
+    private fun refreshModelPref(pref: Preference, pack: OcrModelStore.OcrModelPack) {
+        val ctx = requireContext()
+        if (OcrModelStore.isInstalled(ctx, pack)) {
+            pref.summary = getString(
+                R.string.ocr_model_installed,
+                formatBytes(OcrModelStore.installedSize(ctx, pack))
+            ) + "（长按删除）\n" + pack.description
+        } else {
+            pref.summary = getString(
+                R.string.ocr_model_not_installed,
+                formatBytes(OcrModelStore.totalBytes(pack))
+            ) + "\n" + pack.description
+        }
+    }
+
+    private fun downloadModel(pack: OcrModelStore.OcrModelPack, pref: Preference) {
+        val ctx = requireContext()
+        pref.isEnabled = false
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    OcrModelStore.download(ctx, pack) { done, total ->
+                        val pct = ((done * 100L) / total).toInt()
+                        lifecycleScope.launch { pref.summary = getString(R.string.ocr_model_downloading, pct) }
+                    }
+                }
+            }.onSuccess {
+                ctx.toast(getString(R.string.ocr_model_downloaded, pack.displayName))
+            }.onFailure {
+                ctx.toast(it)
+            }
+            pref.isEnabled = true
+            refreshModelPref(pref, pack)
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (mb >= 1.0) String.format("%.1f MB", mb) else "${bytes / 1024} KB"
     }
 
     /**

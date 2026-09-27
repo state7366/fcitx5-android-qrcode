@@ -347,7 +347,14 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
                     Timber.d("OcrScan: engine ready (${created?.id})")
                 } else {
                     runCatching { created?.close() }
-                    statusText.setText(R.string.ocr_engine_unavailable)
+                    // OCRSCAN: prefer the engine's own reason (e.g. "external model
+                    // pack not downloaded") over the generic message.
+                    val err = created?.prepareError
+                    if (err.isNullOrBlank()) {
+                        statusText.setText(R.string.ocr_engine_unavailable)
+                    } else {
+                        statusText.text = context.getString(R.string.ocr_failed, err)
+                    }
                     captureButton.isEnabled = false
                     captureButton.alpha = 0.45f
                 }

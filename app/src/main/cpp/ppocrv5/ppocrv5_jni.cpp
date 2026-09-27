@@ -52,6 +52,99 @@ static void sort_reading_order(std::vector<Object>& objects)
 static constexpr float kMergeRightMarginFrac = 0.90f;
 static constexpr float kMergeLeftMarginFrac  = 0.10f;
 
+// Content cue: true if the recognized line begins with a list / section marker
+// such as "1."  "2、"  "（3）"  "(4)"  "一、"  "·"  "*". Such a line starts a
+// NEW logical line and must never be merged into the previous one. This is what
+// disambiguates a cropped, full-width document, where geometry alone cannot
+// (every line then reaches the right edge and starts at the left margin).
+static bool starts_new_item(const std::string& text)
+{
+    size_t i = 0;
+    while (i < text.size() &&
+           (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r'))
+        ++i;
+    if (i >= text.size())
+        return false;
+    const unsigned char c = static_cast<unsigned char>(text[i]);
+
+    // Arabic-numbered item: "1."  "2、"  "3)"  "1．"
+    if (c >= '0' && c <= '9')
+    {
+        size_t j = i;
+        while (j < text.size() && text[j] >= '0' && text[j] <= '9')
+            ++j;
+        while (j < text.size() && (text[j] == ' ' || text[j] == '\t'))
+            ++j;
+        if (j < text.size())
+        {
+            const unsigned char d = static_cast<unsigned char>(text[j]);
+            if (d == '.' || d == ')' || text.compare(j, 3, "\xEF\xBC\x8E") == 0) // ．
+                return true;
+            if (text.compare(j, 3, "\xE3\x80\x81") == 0) // 、
+                return true;
+            if (text.compare(j, 3, "\xEF\xBC\x89") == 0) // ）
+                return true;
+        }
+        return false;
+    }
+
+    // "（1）" / "(1)"
+    if (text.compare(i, 3, "\xEF\xBC\x88") == 0 || c == '(')
+    {
+        const size_t j = (c == '(') ? i + 1 : i + 3;
+        if (j < text.size() && text[j] >= '0' && text[j] <= '9')
+            return true;
+    }
+
+    // bullet markers: · ・ • — * -
+    if (text.compare(i, 2, "\xC2\xB7") == 0) return true;      // ·
+    if (text.compare(i, 3, "\xE3\x83\xBB") == 0) return true;  // ・
+    if (text.compare(i, 3, "\xE2\x80\xA2") == 0) return true;  // •
+    if (text.compare(i, 3, "\xE2\x80\x94") == 0) return true;  // —
+    if (c == '*' || c == '-') return true;
+
+    // CJK-numbered item: 一、 二、 ... 十、
+    static const char* kCjkNum[] = {
+        "\xE4\xB8\x80", "\xE4\xBA\x8C", "\xE4\xB8\x89", "\xE5\x9B\x9B",
+        "\xE4\xBA\x94", "\xE5\x85\xAD", "\xE4\xB8\x83", "\xE5\x85\xAB",
+        "\xE4\xB9\x9D", "\xE5\x8D\x81"};
+    for (const char* n : kCjkNum)
+    {
+        if (text.compare(i, 3, n) == 0)
+        {
+            const size_t j = i + 3;
+            if (text.compare(j, 3, "\xE3\x80\x81") == 0) // 、
+                return true;
+            if (j < text.size() && text[j] == '.')
+                return true;
+        }
+    }
+    return false;
+}
+
+// Content cue: true if the recognized line ends with sentence-final punctuation
+// (。 ？ ！ … ! ?), i.e. the logical line already finished.
+static bool ends_sentence(const std::string& text)
+{
+    size_t i = text.size();
+    while (i > 0 && (text[i - 1] == ' ' || text[i - 1] == '\t' ||
+                     text[i - 1] == '\n' || text[i - 1] == '\r'))
+        --i;
+    if (i == 0)
+        return false;
+    if (i >= 3)
+    {
+        const std::string t = text.substr(i - 3, 3);
+        if (t == "\xE3\x80\x82" || // 。
+            t == "\xEF\xBC\x9F" || // ？
+            t == "\xEF\xBC\x81" || // ！
+            t == "\xE2\x80\xA6")   // …
+            return true;
+    }
+    const char c = text[i - 1];
+    return c == '!' || c == '?';
+}
+
 // Decide whether two consecutive text boxes should be joined into one logical
 // line (i.e. NO newline between them). Returns true to merge.
 //
@@ -66,10 +159,13 @@ static constexpr float kMergeLeftMarginFrac  = 0.10f;
 //   1. Same physical row: the detector split one line into side-by-side boxes
 //      (their vertical centres fall within a half-line band) -> join, no '\n'.
 //   2. Wrapped continuation: the previous (horizontal) line reaches the right
-//      margin of the image and the current line starts near the left margin,
-//      i.e. the current line is the wrapped remainder of the same logical line
-//      -> join, no '\n'. Vertical boxes are never merged into anything.
-static bool should_merge_lines(const Object& prev, const Object& cur, int imgWidth)
+//      margin, the current line starts near the left margin and sits below it,
+//      AND the current line does not itself start a new list item and the
+//      previous line did not already end a sentence -> join, no '\n'.
+//      Vertical boxes are never merged into anything.
+static bool should_merge_lines(const Object& prev, const Object& cur,
+                               const std::string& prevText, const std::string& curText,
+                               int imgWidth)
 {
     if (prev.orientation != 0 || cur.orientation != 0)
         return false; // never merge vertical text, and never merge into it
@@ -79,7 +175,6 @@ static bool should_merge_lines(const Object& prev, const Object& cur, int imgWid
     cur.rrect.points(pb);
     const float prevRight  = std::max({pa[0].x, pa[1].x, pa[2].x, pa[3].x});
     const float curLeft    = std::min({pb[0].x, pb[1].x, pb[2].x, pb[3].x});
-    const float curRight   = std::max({pb[0].x, pb[1].x, pb[2].x, pb[3].x});
     const float prevBottom = std::max({pa[0].y, pa[1].y, pa[2].y, pa[3].y});
     const float curTop     = std::min({pb[0].y, pb[1].y, pb[2].y, pb[3].y});
 
@@ -88,14 +183,16 @@ static bool should_merge_lines(const Object& prev, const Object& cur, int imgWid
     if (std::abs(prev.rrect.center.y - cur.rrect.center.y) <= halfBand)
         return true;
 
-    // (2) wrapped continuation: prev runs to (near) the right margin, cur
-    // resumes at the left margin, cur sits below prev, AND cur does not itself
-    // reach the right margin (it is a shorter remainder). The last clause is
-    // what keeps two genuine full-width lines from being merged into one.
+    // (2) wrapped continuation: prev runs to the right margin, cur resumes at
+    // the left margin and sits below prev. Content cues then VETO the join when
+    // cur starts a new list item or prev already ended a sentence -- that is
+    // what keeps numbered items / paragraphs from being glued together on a
+    // cropped, full-width page. (No "cur is shorter" test: on a cropped page a
+    // long continuation also touches the right edge, so it is unreliable.)
     const float rightMargin = static_cast<float>(imgWidth) * kMergeRightMarginFrac;
     const float leftMargin  = static_cast<float>(imgWidth) * kMergeLeftMarginFrac;
     if (prevRight >= rightMargin && curLeft <= leftMargin && curTop > prevBottom
-        && curRight < prevRight)
+        && !starts_new_item(curText) && !ends_sentence(prevText))
         return true;
 
     return false;
@@ -107,12 +204,25 @@ static bool should_merge_lines(const Object& prev, const Object& cur, int imgWid
 // keep one glyph per line. (Baimiao / 白描 is excluded -- see should_merge_lines.)
 static std::string objects_to_text(const std::vector<Object>& objects, int imgWidth)
 {
-    // Drop empty (unrecognized) boxes first so lookahead is well-defined.
+    // Drop empty (unrecognized) boxes and decode each line once, so the content
+    // cues (starts_new_item / ends_sentence) can inspect the text cheaply.
     std::vector<const Object*> boxes;
+    std::vector<std::string> texts;
     boxes.reserve(objects.size());
+    texts.reserve(objects.size());
     for (const auto& o : objects)
-        if (!o.text.empty())
-            boxes.push_back(&o);
+    {
+        if (o.text.empty())
+            continue;
+        std::string s;
+        for (const Character& ch : o.text)
+            if (ch.id >= 0 && ch.id < character_dict_size)
+                s += character_dict[ch.id];
+        if (s.empty())
+            continue;
+        boxes.push_back(&o);
+        texts.push_back(std::move(s));
+    }
 
     std::string out;
     const size_t n = boxes.size();
@@ -126,25 +236,20 @@ static std::string objects_to_text(const std::vector<Object>& objects, int imgWi
         if (i > 0)
         {
             const Object& prev = *boxes[i - 1];
-            if (!should_merge_lines(prev, obj, imgWidth) && !out.empty() && out.back() != '\n')
+            if (!should_merge_lines(prev, obj, texts[i - 1], texts[i], imgWidth)
+                && !out.empty() && out.back() != '\n')
                 out += '\n';
         }
 
         if (obj.orientation == 0)
         {
-            for (size_t j = 0; j < obj.text.size(); ++j)
-            {
-                const Character& ch = obj.text[j];
-                if (ch.id >= 0 && ch.id < character_dict_size)
-                    out += character_dict[ch.id];
-            }
+            out += texts[i];
         }
         else
         {
             // vertical text: stack glyphs, one per line
-            for (size_t j = 0; j < obj.text.size(); ++j)
+            for (const Character& ch : obj.text)
             {
-                const Character& ch = obj.text[j];
                 if (ch.id >= 0 && ch.id < character_dict_size)
                 {
                     out += character_dict[ch.id];

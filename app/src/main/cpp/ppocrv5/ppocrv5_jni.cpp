@@ -28,7 +28,10 @@
 // export the real symbol wins.
 extern "C" __attribute__((weak)) void __kmpc_dispatch_deinit(void*, int) {}
 
-// Sort boxes into reading order: top-to-bottom, then left-to-right within a row.
+// Sort boxes into reading order: top-to-bottom by row, with left-to-right
+// order inside a row. This is the conventional reading order the user expects
+// (NOT left-most-start-first). Boxes whose vertical centres fall within a
+// half-line band are treated as the same row and ordered by x.
 static void sort_reading_order(std::vector<Object>& objects)
 {
     std::sort(objects.begin(), objects.end(), [](const Object& a, const Object& b) {
@@ -41,14 +44,86 @@ static void sort_reading_order(std::vector<Object>& objects)
     });
 }
 
-static std::string objects_to_text(const std::vector<Object>& objects)
+// Newline-merge tuning: fractions of the image width treated as the right /
+// left margin. A line that touches the right margin followed by a line starting
+// at the left margin is treated as a wrapped continuation of the same line.
+static constexpr float kMergeRightMarginFrac = 0.96f;
+static constexpr float kMergeLeftMarginFrac  = 0.04f;
+
+// Decide whether two consecutive text boxes should be joined into one logical
+// line (i.e. NO newline between them). Returns true to merge.
+//
+// SCOPE: this newline-merge strategy is applied ONLY to on-device / local
+// recognition models (PP-OCRv5 here, and analogously any other local engine).
+// The 白描 / Baimiao cloud provider is intentionally EXCLUDED -- it returns
+// server-formatted text that must not be re-flowed by this heuristic. Baimiao
+// never passes through this native assembly, so the exclusion holds by
+// construction.
+//
+// Two over-segmentation cases are collapsed:
+//   1. Same physical row: the detector split one line into side-by-side boxes
+//      (their vertical centres fall within a half-line band) -> join, no '\n'.
+//   2. Wrapped continuation: the previous (horizontal) line reaches the right
+//      margin of the image and the current line starts near the left margin,
+//      i.e. the current line is the wrapped remainder of the same logical line
+//      -> join, no '\n'. Vertical boxes are never merged into anything.
+static bool should_merge_lines(const Object& prev, const Object& cur, int imgWidth)
 {
+    if (prev.orientation != 0 || cur.orientation != 0)
+        return false; // never merge vertical text, and never merge into it
+
+    cv::Point2f pa[4], pb[4];
+    prev.rrect.points(pa);
+    cur.rrect.points(pb);
+    const float prevRight  = std::max({pa[0].x, pa[1].x, pa[2].x, pa[3].x});
+    const float curLeft    = std::min({pb[0].x, pb[1].x, pb[2].x, pb[3].x});
+    const float prevBottom = std::max({pa[0].y, pa[1].y, pa[2].y, pa[3].y});
+    const float curTop     = std::min({pb[0].y, pb[1].y, pb[2].y, pb[3].y});
+
+    // (1) same row: centres within a half-line band -> detector split one line.
+    const float halfBand = std::max(prev.rrect.size.height, cur.rrect.size.height) * 0.5f;
+    if (std::abs(prev.rrect.center.y - cur.rrect.center.y) <= halfBand)
+        return true;
+
+    // (2) wrapped continuation: prev runs to the right margin, cur resumes at
+    // the left margin, and cur sits below prev.
+    const float rightMargin = static_cast<float>(imgWidth) * kMergeRightMarginFrac;
+    const float leftMargin  = static_cast<float>(imgWidth) * kMergeLeftMarginFrac;
+    if (prevRight >= rightMargin && curLeft <= leftMargin && curTop > prevBottom)
+        return true;
+
+    return false;
+}
+
+// Assemble recognized boxes into a single text block. Reading order is the
+// top-to-bottom row order from sort_reading_order(); the merge strategy above
+// then collapses over-segmented lines into one logical line. Vertical boxes
+// keep one glyph per line. (Baimiao / 白描 is excluded -- see should_merge_lines.)
+static std::string objects_to_text(const std::vector<Object>& objects, int imgWidth)
+{
+    // Drop empty (unrecognized) boxes first so lookahead is well-defined.
+    std::vector<const Object*> boxes;
+    boxes.reserve(objects.size());
+    for (const auto& o : objects)
+        if (!o.text.empty())
+            boxes.push_back(&o);
+
     std::string out;
-    for (size_t i = 0; i < objects.size(); ++i)
+    const size_t n = boxes.size();
+    for (size_t i = 0; i < n; ++i)
     {
-        const Object& obj = objects[i];
-        if (obj.text.empty())
-            continue;
+        const Object& obj = *boxes[i];
+
+        // Separator before this box (except the very first). A newline, unless
+        // the merge strategy joins it to the previous box into one logical line.
+        // Skip when the previous box already ended on a newline (vertical text).
+        if (i > 0)
+        {
+            const Object& prev = *boxes[i - 1];
+            if (!should_merge_lines(prev, obj, imgWidth) && !out.empty() && out.back() != '\n')
+                out += '\n';
+        }
+
         if (obj.orientation == 0)
         {
             for (size_t j = 0; j < obj.text.size(); ++j)
@@ -71,10 +146,8 @@ static std::string objects_to_text(const std::vector<Object>& objects)
                 }
             }
         }
-        if (!out.empty() && out.back() != '\n')
-            out += '\n';
     }
-    // trailing newline trimmed; caller handles surrounding whitespace.
+    // Trim trailing newline(s) (a final vertical box ends on one).
     while (!out.empty() && out.back() == '\n')
         out.pop_back();
     return out;
@@ -180,7 +253,7 @@ Java_org_fcitx_fcitx5_android_input_ocr_PpOcrV5Native_nativeRecognize(
             std::vector<Object> objects;
             engine->detect_and_recognize(rgb, objects);
             sort_reading_order(objects);
-            result = objects_to_text(objects);
+            result = objects_to_text(objects, rgb.cols);
         }
     }
     catch (...)

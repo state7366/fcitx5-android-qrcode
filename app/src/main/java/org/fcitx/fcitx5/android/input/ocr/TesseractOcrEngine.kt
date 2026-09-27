@@ -87,9 +87,29 @@ object TesseractProvider : OcrEngineProvider {
 
     const val ID = "tesseract"
 
+    const val KEY_LANGUAGES = "languages"
+
     override val id: String get() = ID
 
-    override val displayName: String get() = "Tesseract"
+    override val displayName: String get() = "Tesseract（本地）"
 
-    override fun create(context: Context): OcrEngine = TesseractOcrEngine()
+    override val spec: OcrEngineSpec = OcrEngineSpec(
+        id = ID,
+        displayName = "Tesseract（本地）",
+        description = "完全离线，图片不出手机；中文印刷体效果尚可",
+        local = true,
+        fields = listOf(
+            OcrFieldSpec(
+                KEY_LANGUAGES, "语言",
+                defaultValue = TesseractOcrEngine.DEFAULT_LANGUAGES.joinToString("+"),
+                hint = "与内置训练数据对应，如 chi_sim+eng"
+            )
+        )
+    )
+
+    override fun create(context: Context, config: OcrConfig): OcrEngine {
+        val langs = config.get(KEY_LANGUAGES, TesseractOcrEngine.DEFAULT_LANGUAGES.joinToString("+"))
+            .split('+').map { it.trim() }.filter { it.isNotEmpty() }
+        return TesseractOcrEngine(langs.ifEmpty { TesseractOcrEngine.DEFAULT_LANGUAGES })
+    }
 }

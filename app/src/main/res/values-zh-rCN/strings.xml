@@ -334,4 +334,19 @@
     <string name="ocr_committed">已上屏</string>
     <string name="ocr_copied">已复制</string>
     <string name="ocr_engine_unavailable">OCR 引擎不可用（缺少语言数据）</string>
+    <string name="ocr_failed">识别失败：%1$s</string>
+    <string name="ocr_settings">OCR 识别引擎</string>
+    <string name="ocr_engine">识别引擎</string>
+    <string name="ocr_engine_local">本地 · 隐私友好</string>
+    <string name="ocr_engine_cloud">云端</string>
+    <string name="ocr_select_engine">选择识别引擎</string>
+    <string name="ocr_engine_params">引擎参数</string>
+    <string name="ocr_export_config">导出配置</string>
+    <string name="ocr_import_config">导入配置</string>
+    <string name="ocr_config_exported">配置已导出</string>
+    <string name="ocr_config_imported">配置已导入</string>
+    <string name="ocr_config_invalid">不是有效的 OCR 配置文件</string>
+    <string name="ocr_secret_filled">已填写</string>
+    <string name="ocr_not_set">未填写</string>
+    <string name="ocr_no_params">该引擎无需配置</string>
 </resources>

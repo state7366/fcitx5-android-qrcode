@@ -10,17 +10,23 @@ import timber.log.Timber
 /**
  * OCRSCAN: registry of available OCR backends.
  *
- * To add a model later: write an [OcrEngine] + [OcrEngineProvider] pair, register
- * the provider here (or call [register] from app startup), and optionally expose
- * the new [id] in preferences. Nothing else in the OCR subsystem changes.
+ * To add a model later: write an [OcrEngine] + [OcrEngineProvider] pair (the
+ * provider also declares an [OcrEngineSpec] describing its settings fields) and
+ * register it here. Nothing else in the OCR subsystem changes -- the settings
+ * screen and the scan panel are driven by [specs].
  */
 object OcrEngineRegistry {
 
     private val providers = linkedMapOf<String, OcrEngineProvider>()
 
     init {
-        // Tesseract is the only bundled backend for now.
+        // Local, privacy friendly
         register(TesseractProvider)
+        // Cloud / self-hosted
+        register(BaiduProvider)
+        register(TencentProvider)
+        register(BaimiaoProvider)
+        register(CustomHttpProvider)
     }
 
     fun register(provider: OcrEngineProvider) {
@@ -30,23 +36,24 @@ object OcrEngineRegistry {
     /** All registered backends, in registration order. */
     fun providers(): List<OcrEngineProvider> = providers.values.toList()
 
+    /** Descriptors for the settings screen. */
+    fun specs(): List<OcrEngineSpec> = providers.values.map { it.spec }
+
     fun provider(id: String): OcrEngineProvider? = providers[id]
 
+    fun spec(id: String): OcrEngineSpec? = providers[id]?.spec
+
     /**
-     * Create an engine instance.
-     * @param id backend id; when null or unknown, the first registered backend is used
-     * @return null when nothing is registered
+     * Create the engine described by [config]. Falls back to the local Tesseract
+     * backend when the configured id is unknown (e.g. config imported from a
+     * build without that backend).
      */
-    fun create(context: Context, id: String? = null): OcrEngine? {
-        val provider = providers[id] ?: providers.values.firstOrNull()
-        if (provider == null) {
-            Timber.w("OcrEngineRegistry: no OCR backend registered")
-            return null
-        }
-        if (id != null && providers[id] == null) {
-            Timber.w("OcrEngineRegistry: unknown backend '$id', falling back to '${provider.id}'")
-        }
-        return provider.create(context)
+    fun create(context: Context, config: OcrConfig = OcrConfigStore.load(context)): OcrEngine? {
+        val provider = providers[config.engineId]
+            ?: providers[TesseractProvider.ID].also {
+                Timber.w("OcrEngineRegistry: unknown backend '${config.engineId}', using ${TesseractProvider.ID}")
+            }
+        return provider?.create(context, config)
     }
 
     const val DEFAULT_ID: String = TesseractProvider.ID

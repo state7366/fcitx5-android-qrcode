@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android.input.ocr
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -14,12 +15,14 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.drawable.GradientDrawable
 import android.util.Size
 import android.view.Gravity
+import android.view.Menu
 import android.view.View
-import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.widget.PopupMenu
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -27,6 +30,9 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
@@ -37,43 +43,42 @@ import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
-import splitties.views.backgroundColor
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.frameLayout
 import splitties.views.dsl.core.horizontalLayout
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.textView
-import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
 import timber.log.Timber
 import java.util.concurrent.Executors
-import android.content.BroadcastReceiver
 
 /**
  * OCRSCAN: camera panel for the "ocr" input method.
  *
  * Mirrors [QrScanWindow], but instead of decoding a barcode it runs a still frame
- * through an [OcrEngine] obtained from [OcrEngineRegistry]. Unlike QR scanning,
- * recognition is single-shot (tap to capture) because OCR is far too slow to run
- * on every frame.
+ * through an [OcrEngine] obtained from [OcrEngineRegistry] (the active backend is
+ * chosen in the OCR settings screen). Recognition is single-shot -- OCR is far
+ * too slow to run on every frame.
  */
 class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
 
     private val service: FcitxInputMethodService by manager.inputMethodService()
     private val windowManager: InputWindowManager by manager.must()
 
-    private val lifecycleOwner = object : androidx.lifecycle.LifecycleOwner {
-        private val registry = androidx.lifecycle.LifecycleRegistry(this)
-        override val lifecycle: androidx.lifecycle.Lifecycle get() = registry
-        fun create() { registry.currentState = androidx.lifecycle.Lifecycle.State.CREATED }
-        fun resume() { registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
-        fun destroy() { registry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED }
+    private val lifecycleOwner = object : LifecycleOwner {
+        private val registry = LifecycleRegistry(this)
+        override val lifecycle: Lifecycle get() = registry
+        fun create() { registry.currentState = Lifecycle.State.CREATED }
+        fun resume() { registry.currentState = Lifecycle.State.RESUMED }
+        fun destroy() { registry.currentState = Lifecycle.State.DESTROYED }
     }
 
     private lateinit var previewView: PreviewView
     private lateinit var statusText: TextView
+    private lateinit var engineText: TextView
     private lateinit var resultText: TextView
+    private lateinit var resultCard: ScrollView
     private lateinit var captureButton: TextView
     private lateinit var commitButton: TextView
     private lateinit var copyButton: TextView
@@ -90,7 +95,6 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
     @Volatile
     private var busy = false
 
-    /** Recognized text waiting to be committed / copied. */
     private var pendingText: String = ""
 
     private val permissionReceiver = object : BroadcastReceiver() {
@@ -120,57 +124,90 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
             gravity = Gravity.CENTER
             text = context.getString(R.string.ocr_scan_hint)
         }
+        engineText = context.textView {
+            setTextColor(Color.argb(210, 255, 255, 255))
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(120, 24, 24, 24))
+                cornerRadius = dp(10).toFloat()
+            }
+            // OCRSCAN: quick engine switch without leaving the panel
+            setOnClickListener { showEngineMenu() }
+        }
         resultText = context.textView {
             setTextColor(Color.WHITE)
             textSize = 14f
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
             text = ""
         }
-        val resultScroll = ScrollView(context).apply {
-            backgroundColor = Color.argb(160, 0, 0, 0)
+        resultCard = ScrollView(context).apply {
+            background = roundedDrawable(Color.argb(150, 24, 24, 24), dp(10).toFloat())
             addView(resultText)
+            visibility = View.GONE
         }
-        captureButton = actionButton(context.getString(R.string.ocr_capture)) { requestCapture() }
-        commitButton = actionButton(context.getString(R.string.ocr_commit)) { commitPending() }
-        copyButton = actionButton(context.getString(R.string.ocr_copy)) { copyPending() }
-        commitButton.isEnabled = false
-        copyButton.isEnabled = false
+        captureButton = pillButton(context.getString(R.string.ocr_capture)) { requestCapture() }
+        commitButton = pillButton(context.getString(R.string.ocr_commit)) { commitPending() }
+        copyButton = pillButton(context.getString(R.string.ocr_copy)) { copyPending() }
+        setActionsEnabled(false)
         val buttonBar = context.horizontalLayout {
             add(captureButton, lParams(wrapContent, wrapContent))
-            add(commitButton, lParams(wrapContent, wrapContent))
-            add(copyButton, lParams(wrapContent, wrapContent))
+            add(commitButton, lParams(wrapContent, wrapContent) { marginStart = dp(8) })
+            add(copyButton, lParams(wrapContent, wrapContent) { marginStart = dp(8) })
         }
-        val cancelButton = actionButton(context.getString(android.R.string.cancel)) { finishOcrScan() }
+        val cancelButton = pillButton(context.getString(android.R.string.cancel)) { finishOcrScan() }
         return context.frameLayout {
-            backgroundColor = Color.BLACK
             add(previewView, lParams(matchParent, matchParent))
-            add(resultScroll, lParams(matchParent, dp(RESULT_PANEL_DP)) {
+            add(resultCard, lParams(matchParent, dp(RESULT_CARD_DP)) {
                 gravity = Gravity.BOTTOM
-                bottomMargin = dp(56)
+                bottomMargin = dp(60)
+                marginStart = dp(12)
+                marginEnd = dp(12)
             })
             add(buttonBar, lParams(wrapContent, wrapContent) {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(8)
+                bottomMargin = dp(10)
             })
             add(statusText, lParams(wrapContent, wrapContent) {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                topMargin = dp(12)
+                topMargin = dp(10)
+            })
+            add(engineText, lParams(wrapContent, wrapContent) {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                topMargin = dp(28)
             })
             add(cancelButton, lParams(wrapContent, wrapContent) {
                 gravity = Gravity.TOP or Gravity.START
-                topMargin = dp(8)
-                marginStart = dp(8)
+                topMargin = dp(6)
+                marginStart = dp(6)
             })
         }
     }
 
-    private fun actionButton(label: String, onClick: () -> Unit) = context.textView {
+    private fun roundedDrawable(fill: Int, radius: Float) = GradientDrawable().apply {
+        setColor(fill)
+        cornerRadius = radius
+    }
+
+    private fun pillButton(label: String, onClick: () -> Unit) = context.textView {
         setTextColor(Color.WHITE)
         textSize = 14f
         gravity = Gravity.CENTER
         text = label
-        setPadding(dp(14), dp(10), dp(14), dp(10))
+        setPadding(dp(16), dp(9), dp(16), dp(9))
+        background = GradientDrawable().apply {
+            setColor(Color.argb(170, 32, 32, 32))
+            cornerRadius = dp(18).toFloat()
+        }
         setOnClickListener { onClick() }
+    }
+
+    private fun setActionsEnabled(enabled: Boolean) {
+        commitButton.isEnabled = enabled
+        commitButton.alpha = if (enabled) 1f else 0.45f
+        copyButton.isEnabled = enabled
+        copyButton.alpha = if (enabled) 1f else 0.45f
     }
 
     override fun onAttached() {
@@ -180,6 +217,8 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         lifecycleOwner.create()
+        val config = OcrConfigStore.load(context)
+        showEngineName(config)
         if (hasCameraPermission()) {
             startCamera()
         } else {
@@ -188,7 +227,7 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
         }
-        prepareEngine()
+        prepareEngine(config)
     }
 
     override fun onDetached() {
@@ -200,17 +239,57 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
         busy = false
         pendingText = ""
         service.pendingScanPanel = null
-        val e = engine
-        engine = null
-        worker.execute { runCatching { e?.close() } }
+        releaseEngine()
     }
 
     private fun hasCameraPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
-    private fun prepareEngine() {
+    private fun showEngineName(config: OcrConfig) {
+        val name = OcrEngineRegistry.spec(config.engineId)?.displayName ?: config.engineId
+        engineText.text = "$name ▾"
+    }
+
+    /** OCRSCAN: pick another backend on the fly (the full form lives in Settings). */
+    private fun showEngineMenu() {
+        val specs = OcrEngineRegistry.specs()
+        val current = OcrConfigStore.load(context).engineId
+        val popup = PopupMenu(context, engineText)
+        specs.forEachIndexed { index, spec ->
+            val kind = context.getString(if (spec.local) R.string.ocr_engine_local else R.string.ocr_engine_cloud)
+            popup.menu.add(Menu.NONE, index, index, "${spec.displayName}  ・  $kind").apply {
+                isChecked = spec.id == current
+            }
+        }
+        popup.menu.setGroupCheckable(Menu.NONE, true, true)
+        popup.setOnMenuItemClickListener { item ->
+            specs.getOrNull(item.itemId)?.let { switchEngine(it.id) }
+            true
+        }
+        popup.show()
+    }
+
+    private fun switchEngine(id: String) {
+        // Keep already-typed credentials so switching back and forth is lossless.
+        val config = OcrConfig(engineId = id, params = OcrConfigStore.load(context).params)
+        OcrConfigStore.save(context, config)
+        showEngineName(config)
+        statusText.setText(R.string.ocr_scan_hint)
+        releaseEngine()
+        prepareEngine(config)
+    }
+
+    private fun releaseEngine() {
+        val e = engine
+        engine = null
+        worker.execute { runCatching { e?.close() } }
+    }
+
+    private fun prepareEngine(config: OcrConfig) {
+        captureButton.isEnabled = true
+        captureButton.alpha = 1f
         worker.execute {
-            val created = OcrEngineRegistry.create(context)
+            val created = OcrEngineRegistry.create(context, config)
             val ok = created?.let { runCatching { it.prepare(context) }.getOrElse { false } } ?: false
             mainExecutor.execute {
                 if (!windowManager.isAttached(this)) {
@@ -224,6 +303,7 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
                     runCatching { created?.close() }
                     statusText.setText(R.string.ocr_engine_unavailable)
                     captureButton.isEnabled = false
+                    captureButton.alpha = 0.45f
                 }
             }
         }
@@ -233,7 +313,7 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             try {
-                if (lifecycleOwner.lifecycle.currentState == androidx.lifecycle.Lifecycle.State.DESTROYED) return@addListener
+                if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
                 val provider = future.get()
                 cameraProvider = provider
                 val preview = Preview.Builder().build().also {
@@ -266,22 +346,22 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
         if (busy) return
         busy = true
         pendingText = ""
-        commitButton.isEnabled = false
-        copyButton.isEnabled = false
-        statusText.setText(R.string.ocr_recognizing)
+        setActionsEnabled(false)
+        resultCard.visibility = View.GONE
         resultText.text = ""
+        statusText.setText(R.string.ocr_recognizing)
         analyzer?.requested = true
     }
 
     private fun onFrameCaptured(bitmap: Bitmap) {
         val e = engine
         if (e == null) {
-            onRecognized(OcrResult(""))
+            onRecognized(OcrResult("", error = null))
             return
         }
         val result = runCatching { e.recognize(bitmap) }.getOrElse {
             Timber.e(it, "OcrScan: recognition failed")
-            OcrResult("")
+            OcrResult("", error = it.message)
         }
         onRecognized(result)
     }
@@ -290,17 +370,20 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
         mainExecutor.execute {
             if (!windowManager.isAttached(this)) return@execute
             busy = false
+            result.error?.let {
+                statusText.text = context.getString(R.string.ocr_failed, it.take(60))
+                return@execute
+            }
             if (result.isEmpty) {
                 statusText.setText(R.string.ocr_result_empty)
-                resultText.text = ""
-                commitButton.isEnabled = false
-                copyButton.isEnabled = false
+                resultCard.visibility = View.GONE
+                setActionsEnabled(false)
                 return@execute
             }
             pendingText = result.text
             resultText.text = result.text
-            commitButton.isEnabled = true
-            copyButton.isEnabled = true
+            resultCard.visibility = View.VISIBLE
+            setActionsEnabled(true)
             statusText.setText(R.string.ocr_recognized)
         }
     }
@@ -360,6 +443,6 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
     }
 
     companion object {
-        private const val RESULT_PANEL_DP = 96
+        private const val RESULT_CARD_DP = 110
     }
 }

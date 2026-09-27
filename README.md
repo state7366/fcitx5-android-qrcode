@@ -16,10 +16,21 @@
 
 ### 2. OCR 文字识别输入法（`OCRSCAN`）
 
-- 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。
-- **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义接口，`OcrEngineRegistry` 负责注册与创建，因此将来换模型（PaddleOCR / ONNX / ML Kit / 远端服务）只需新增一个 `OcrEngineProvider`，面板与输入法框架零改动。
-- 当前接入的模型：**Tesseract 5 + Leptonica**（`tesseract4android` AAR，内置于 `app/libs/`，离线可用，无 JitPack / GMS 依赖）；语言数据为 `assets/tessdata/` 下的 `chi_sim` + `eng`（tessdata_fast），首次使用时释放到 App 私有目录。
+- 与二维码平行的第二个相机扫描面板：对准文字 → 点「拍照识别」 → 结果可**上屏**或**复制**。全屏预览 + 半透明结果卡片，不再有取景框遮挡。
+- **OCR 引擎抽象层**：`input/ocr/OcrEngine.kt` 定义 `OcrEngine` 接口，`OcrEngineRegistry` 负责注册与创建，引擎用 `OcrEngineSpec` + `OcrFieldSpec` 自描述配置项，因此新增一个模型**只需注册一个 provider**，面板、设置界面与输入法框架零改动。
+- **内置 5 种后端，可在 设置 → OCR 识别引擎 中手动切换**：
+
+  | 引擎 | 类型 | 说明 |
+  |---|---|---|
+  | Tesseract 5（默认） | 本地 · 隐私友好 | `tesseract4android` AAR 内置于 `app/libs/`，离线可用、图片不出手机；`assets/tessdata/` 下的 `chi_sim`+`eng`（tessdata_fast）首次使用时释放到 App 私有目录 |
+  | 百度智能云 OCR | 云端 · 功能强 | AK/SK 换取 access_token，默认 `accurate_basic` 高精度版 |
+  | 腾讯云 OCR | 云端 · 功能强 | TC3-HMAC-SHA256 签名，默认 `GeneralAccurateOCR` |
+  | 白描（自建服务） | 自建 | 白描没有官方云 API，走自建 `baimiao_api`：`POST {服务地址}/ocr`，multipart 图片 + `Authorization: Bearer` |
+  | 自定义 HTTP 接口 | 任意 | 自己填 URL / 请求头 / 请求体模板（`{base64}` 占位）/ 结果 JSON 路径，可对接任何服务商 |
+
+- **配置导入导出**：设置页可把当前引擎与凭据导出为 `ocr-config.json`，或导入之前导出的文件（密钥字段在界面上掩码显示）。
 - 同样需在 fcitx **设置 → 输入法 → 添加** 中启用 "OCR Text Scanner" 才能使用。
+- 完整注入点清单与「换模型的方法」见 [QRSCAN_注入点清单.md](QRSCAN_注入点清单.md) 第五节。
 
 ### 3. Windows 构建体系加固（对上游构建脚本的改进）
 

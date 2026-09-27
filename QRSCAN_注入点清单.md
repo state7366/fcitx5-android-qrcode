@@ -72,8 +72,14 @@
 | `app/build.gradle.kts` | `cmake.targets` 增 `"ocr"`；`dependencies` 增 `implementation(files("libs/tesseract4android-4.8.0.aar"))` |
 | `.gitignore` | `*.aar` 例外 `!app/libs/*.aar`（否则内置 AAR 不进 git，全新克隆构建失败） |
 | `app/src/main/java/.../input/ocr/OcrEngine.kt` | 新增：**OCR 引擎抽象层**——`OcrEngine` 接口 + `OcrResult` + `OcrEngineProvider` |
-| `.../input/ocr/OcrEngineRegistry.kt` | 新增：引擎注册表；换模型只需再注册一个 provider |
-| `.../input/ocr/TesseractOcrEngine.kt` | 新增：当前唯一接入的模型（Tesseract 5 + Leptonica）+ `TesseractProvider` |
+| `.../input/ocr/OcrEngineRegistry.kt` | 新增：引擎注册表（含 `specs()` 供设置界面渲染）；换模型只需再注册一个 provider |
+| `.../input/ocr/OcrConfig.kt` | 新增：`OcrConfig` / `OcrFieldSpec` / `OcrEngineSpec` / `OcrConfigStore`（`ocr-config.json`，含导入导出序列化） |
+| `.../input/ocr/TesseractOcrEngine.kt` | 新增：本地离线模型（Tesseract 5 + Leptonica）+ `TesseractProvider` |
+| `.../input/ocr/RemoteOcrEngines.kt` | 新增：`HttpOcrEngine` 基类 + 百度 / 腾讯云(TC3 签名) / 白描自建服务 / 自定义 HTTP 四个后端及其 provider |
+| `.../ui/main/settings/ocr/OcrSettingsFragment.kt` | 新增：引擎选择器 + 按 `OcrEngineSpec.fields` 动态生成表单 + 配置导入导出（SAF） |
+| `.../ui/main/settings/SettingsRoute.kt` | `SettingsRoute.Ocr` + `createGraph` 里 `fragment<OcrSettingsFragment, Ocr>` |
+| `.../ui/main/MainFragment.kt` | Android 分类下新增「OCR 识别引擎」入口 |
+| `AndroidManifest.xml` | 新增 `android.permission.INTERNET`（云端引擎需要） |
 | `.../input/ocr/TessDataInstaller.kt` | 新增：把 `assets/tessdata` 下的训练数据拷到 app 私有目录（native 读不到 APK 内 assets） |
 | `.../input/ocr/OcrScanWindow.kt` | 新增：相机面板；单拍识别（拍照→识别→上屏/复制），非逐帧 |
 | `app/src/main/java/.../core/SubtypeManager.kt` | `OCR_SUBTYPE = "ocr"` |
@@ -84,8 +90,18 @@
 | `res/values/strings.xml`、`res/values-zh-rCN/strings.xml` | `ocr_*` 文案 |
 | `res/drawable/ic_ocr_scan.xml` | 新增图标 |
 
-## 换模型的方法（抽象层用途）
+## 换 / 加模型的方法（抽象层用途）
 
-1. 写 `XxxOcrEngine : OcrEngine` + `XxxProvider : OcrEngineProvider`；
+1. 写 `XxxOcrEngine : OcrEngine` + `XxxProvider : OcrEngineProvider`（`spec` 里声明 `OcrEngineSpec` 与 `fields`，设置界面会自动生成表单，无需改 UI）；
 2. 在 `OcrEngineRegistry.init` 里 `register(XxxProvider)`（或运行时调用 `register`）；
-3. `OcrEngineRegistry.create(context, id)` 传对应 id 即可。OcrScanWindow / 输入法框架 / 构建接线**无需改动**。
+3. `OcrConfigStore` 里存的是 `engineId + params`，用户在设置界面选中该引擎即可。OcrScanWindow / 输入法框架 / 构建接线**无需改动**。
+
+## 已内置后端
+
+| id | 名称 | 本地/云端 | 备注 |
+|---|---|---|---|
+| `tesseract` | Tesseract 5（默认） | 本地 · 隐私友好 | 内置 `chi_sim`+`eng` 训练数据，图片不出手机 |
+| `baidu` | 百度智能云 OCR | 云端 | AK/SK → access_token → `accurate_basic` |
+| `tencent` | 腾讯云 OCR | 云端 | TC3-HMAC-SHA256 签名，`GeneralAccurateOCR` |
+| `baimiao` | 白描（自建服务） | 自建 | `POST {baseUrl}/ocr`，multipart + Bearer Token |
+| `custom` | 自定义 HTTP 接口 | 任意 | 自行定义 URL / headers / 请求体模板（`{base64}`）/ 结果 JSON 路径 |

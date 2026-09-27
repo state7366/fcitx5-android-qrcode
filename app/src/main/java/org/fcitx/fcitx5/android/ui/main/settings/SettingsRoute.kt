@@ -33,6 +33,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.behavior.SymbolSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.global.GlobalConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.im.InputMethodConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.im.InputMethodListFragment
+import org.fcitx.fcitx5.android.ui.main.settings.ocr.OcrSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.theme.ThemeFragment
 import org.fcitx.fcitx5.android.utils.config.ConfigDescriptor
 import org.fcitx.fcitx5.android.utils.parcelable
@@ -79,6 +80,10 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object Symbol : SettingsRoute()
+
+    /** OCRSCAN: OCR engine picker + per-engine parameters. */
+    @Serializable
+    data object Ocr : SettingsRoute()
 
     @Serializable
     data object Plugin : SettingsRoute()
@@ -218,6 +223,10 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<SymbolSettingsFragment, Symbol> {
                 label = ctx.getString(R.string.emoji_and_symbols)
+            }
+            // OCRSCAN
+            fragment<OcrSettingsFragment, Ocr> {
+                label = ctx.getString(R.string.ocr_settings)
             }
             fragment<PluginFragment, Plugin> {
                 label = ctx.getString(R.string.plugins)

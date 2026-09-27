@@ -12,8 +12,9 @@ import android.graphics.Bitmap
  *
  * @param text recognized text; empty when nothing was found
  * @param confidence mean confidence in `[0, 1]`, or -1 when the engine cannot report it
+ * @param error human readable failure reason (network / auth), null on success
  */
-data class OcrResult(val text: String, val confidence: Float = -1f) {
+data class OcrResult(val text: String, val confidence: Float = -1f, val error: String? = null) {
     val isEmpty: Boolean get() = text.isBlank()
 }
 
@@ -58,5 +59,7 @@ interface OcrEngine {
 interface OcrEngineProvider {
     val id: String
     val displayName: String
-    fun create(context: Context): OcrEngine
+    /** Description used to render the settings form and the engine picker. */
+    val spec: OcrEngineSpec
+    fun create(context: Context, config: OcrConfig): OcrEngine
 }

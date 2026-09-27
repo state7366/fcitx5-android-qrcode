@@ -119,6 +119,12 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.drawable.ic_baseline_more_horiz_24,
                     SettingsRoute.Advanced
                 )
+                // OCRSCAN
+                addDestinationPreference(
+                    R.string.ocr_settings,
+                    R.drawable.ic_ocr_scan,
+                    SettingsRoute.Ocr
+                )
             }
         }
     }

@@ -18,11 +18,11 @@ import android.graphics.Matrix
 import android.graphics.drawable.GradientDrawable
 import android.util.Size
 import android.view.Gravity
-import android.view.Menu
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.appcompat.widget.PopupMenu
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -49,6 +49,7 @@ import splitties.views.dsl.core.horizontalLayout
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.textView
+import splitties.views.dsl.core.verticalLayout
 import splitties.views.dsl.core.wrapContent
 import timber.log.Timber
 import java.util.concurrent.Executors
@@ -79,6 +80,8 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
     private lateinit var engineText: TextView
     private lateinit var resultText: TextView
     private lateinit var resultCard: ScrollView
+    private lateinit var engineMenu: FrameLayout
+    private lateinit var engineMenuList: LinearLayout
     private lateinit var captureButton: TextView
     private lateinit var commitButton: TextView
     private lateinit var copyButton: TextView
@@ -157,6 +160,27 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
             add(copyButton, lParams(wrapContent, wrapContent) { marginStart = dp(8) })
         }
         val cancelButton = pillButton(context.getString(android.R.string.cancel)) { finishOcrScan() }
+        // OCRSCAN: the engine picker must live *inside* the IME view tree.
+        // A PopupMenu / Dialog creates its own focusable Window, which steals window
+        // focus from the host Activity: the editor loses focus, the input connection
+        // is finished (onFinishInput) and the IME is torn down and rebuilt -- the
+        // keyboard visibly disappears and comes back a moment later.
+        engineMenuList = context.verticalLayout {
+            background = roundedDrawable(Color.argb(235, 30, 30, 30), dp(12).toFloat())
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        val scrim = View(context).apply {
+            setBackgroundColor(Color.argb(90, 0, 0, 0))
+            setOnClickListener { hideEngineMenu() }
+        }
+        engineMenu = context.frameLayout {
+            add(scrim, lParams(matchParent, matchParent))
+            add(engineMenuList, lParams(wrapContent, wrapContent) {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                topMargin = dp(54)
+            })
+            visibility = View.GONE
+        }
         return context.frameLayout {
             add(previewView, lParams(matchParent, matchParent))
             add(resultCard, lParams(matchParent, dp(RESULT_CARD_DP)) {
@@ -182,6 +206,7 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
                 topMargin = dp(6)
                 marginStart = dp(6)
             })
+            add(engineMenu, lParams(matchParent, matchParent))
         }
     }
 
@@ -252,21 +277,34 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
 
     /** OCRSCAN: pick another backend on the fly (the full form lives in Settings). */
     private fun showEngineMenu() {
-        val specs = OcrEngineRegistry.specs()
+        if (engineMenu.visibility == View.VISIBLE) {
+            hideEngineMenu()
+            return
+        }
         val current = OcrConfigStore.load(context).engineId
-        val popup = PopupMenu(context, engineText)
-        specs.forEachIndexed { index, spec ->
+        engineMenuList.removeAllViews()
+        OcrEngineRegistry.specs().forEach { spec ->
             val kind = context.getString(if (spec.local) R.string.ocr_engine_local else R.string.ocr_engine_cloud)
-            popup.menu.add(Menu.NONE, index, index, "${spec.displayName}  ・  $kind").apply {
-                isChecked = spec.id == current
-            }
+            engineMenuList.addView(context.textView {
+                text = "${spec.displayName}  ・  $kind"
+                textSize = 13f
+                setTextColor(if (spec.id == current) Color.WHITE else Color.argb(190, 255, 255, 255))
+                setPadding(dp(14), dp(9), dp(14), dp(9))
+                background = roundedDrawable(
+                    if (spec.id == current) Color.argb(140, 62, 110, 200) else Color.TRANSPARENT,
+                    dp(8).toFloat()
+                )
+                setOnClickListener {
+                    switchEngine(spec.id)
+                    hideEngineMenu()
+                }
+            })
         }
-        popup.menu.setGroupCheckable(Menu.NONE, true, true)
-        popup.setOnMenuItemClickListener { item ->
-            specs.getOrNull(item.itemId)?.let { switchEngine(it.id) }
-            true
-        }
-        popup.show()
+        engineMenu.visibility = View.VISIBLE
+    }
+
+    private fun hideEngineMenu() {
+        engineMenu.visibility = View.GONE
     }
 
     private fun switchEngine(id: String) {

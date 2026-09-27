@@ -415,6 +415,10 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
     private fun onFrameCaptured(bitmap: Bitmap) {
         val e = engine
         if (e == null) {
+            // OCRSCAN-DEBUG: still persist the frame so an "engine not ready"
+            // run is debuggable too (the Bitmap is what the engine would have
+            // seen). Previously this returned before saving, losing the frame.
+            saveDebugCapture(bitmap, "none", OcrResult("", error = "engine not ready"))
             onRecognized(OcrResult("", error = null))
             return
         }

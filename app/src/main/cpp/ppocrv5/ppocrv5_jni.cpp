@@ -57,34 +57,87 @@ static void dump_objects(const char* stage, const std::vector<Object>& objects,
 // order inside a row. This is the conventional reading order the user expects
 // (NOT left-most-start-first).
 //
-// IMPORTANT: the previous comparator used a PAIR-DEPENDENT half-band
-// (max(a.h, b.h) * 0.5) as the y-vs-x tie-breaker. That is NOT a strict weak
-// ordering, so std::sort had undefined behaviour and scrambled the order
-// differently depending on the box heights (fine for uniform boxes, garbage
-// for a title + smaller body lines). The fix below is a VALID total order:
-// quantize center.y into row buckets of ~median line height, then sort by
-// (row, x). Quantizing makes the primary key a true function of each box, so
-// the ordering is well-defined and stable.
+// Reading order for line-level detectors (PP-OCRv5 mobile emits one box per
+// text line, and its det boxes are fairly tall).
+//
+// HISTORY / WHY NOT A BUCKET: an earlier version quantized center.y into row
+// buckets of ~median BOX height. On real captures PP-OCRv5's det boxes are
+// ~1.8x the line spacing, so that bucket swallowed several text rows at once
+// (and the earlier pair-dependent half-band was not even a strict weak order,
+// i.e. UB). The (bucket, x) tie-break then re-ordered those rows by text
+// LENGTH: a short tail line jumped ahead of its own long first line, and the
+// right-hand header note slid into the middle of item 1 -- "single column but
+// still scrambled".
+//
+// FIX: estimate the physical line GAP from the data itself -- the median of
+// the consecutive positive gaps between sorted center.y values (most rows hold
+// a single box, so those gaps are dominated by the true line spacing) -- then
+// group boxes into rows using half that gap, order rows by Y and boxes within
+// a row by X. The row index is a pure function of each box, so (row, x) is a
+// valid total order (no UB) and it no longer depends on box height.
 static void sort_reading_order(std::vector<Object>& objects)
 {
     if (objects.empty())
         return;
-    // Robust row height: median of all box heights (resistant to one very tall
-    // box like a title). Falls back to 1px so we never divide by zero.
+
+    // Primary pass: sort by vertical centre so the gaps measure line spacing.
+    std::sort(objects.begin(), objects.end(), [](const Object& a, const Object& b) {
+        return a.rrect.center.y < b.rrect.center.y;
+    });
+
+    // Estimate the line gap. Ignore sub-pixel gaps (boxes sharing one row).
+    std::vector<float> gaps;
+    gaps.reserve(objects.size());
+    for (size_t i = 1; i < objects.size(); ++i)
+    {
+        const float d = objects[i].rrect.center.y - objects[i - 1].rrect.center.y;
+        if (d > 1.0f)
+            gaps.push_back(d);
+    }
     std::vector<float> heights;
     heights.reserve(objects.size());
     for (const auto& o : objects)
         heights.push_back(o.rrect.size.height);
     std::sort(heights.begin(), heights.end());
-    const float rowH = std::max(heights[heights.size() / 2], 1.0f);
+    const float medH = std::max(heights[heights.size() / 2], 1.0f);
 
-    std::sort(objects.begin(), objects.end(), [rowH](const Object& a, const Object& b) {
-        const int ra = static_cast<int>(std::floor(a.rrect.center.y / rowH));
-        const int rb = static_cast<int>(std::floor(b.rrect.center.y / rowH));
-        if (ra != rb)
-            return ra < rb;
-        return a.rrect.center.x < b.rrect.center.x;
+    float lineGap = medH;
+    if (!gaps.empty())
+    {
+        std::sort(gaps.begin(), gaps.end());
+        lineGap = std::max(gaps[gaps.size() / 2], 1.0f);
+    }
+    const float rowThresh = std::max(lineGap * 0.5f, 1.0f);
+
+    // Assign row indices: a new row starts once we drop more than rowThresh
+    // below the current row's anchor (its first box).
+    std::vector<int> rowIdx(objects.size(), 0);
+    std::vector<size_t> order(objects.size());
+    int row = 0;
+    float anchorY = objects[0].rrect.center.y;
+    for (size_t i = 0; i < objects.size(); ++i)
+    {
+        if (objects[i].rrect.center.y - anchorY > rowThresh)
+        {
+            ++row;
+            anchorY = objects[i].rrect.center.y;
+        }
+        rowIdx[i] = row;
+        order[i] = i;
+    }
+
+    // Final: order by (row, x); stable so equal keys keep their Y order.
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        if (rowIdx[a] != rowIdx[b])
+            return rowIdx[a] < rowIdx[b];
+        return objects[a].rrect.center.x < objects[b].rrect.center.x;
     });
+
+    std::vector<Object> sorted;
+    sorted.reserve(objects.size());
+    for (size_t i : order)
+        sorted.push_back(std::move(objects[i]));
+    objects.swap(sorted);
 }
 
 // Newline-merge tuning: fractions of the image width treated as the right /

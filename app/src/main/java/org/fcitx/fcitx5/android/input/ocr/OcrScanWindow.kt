@@ -18,6 +18,11 @@ import android.graphics.Matrix
 import android.graphics.drawable.GradientDrawable
 import android.util.Size
 import android.view.Gravity
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -33,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
@@ -416,7 +422,37 @@ class OcrScanWindow : InputWindow.ExtendedInputWindow<OcrScanWindow>() {
             Timber.e(it, "OcrScan: recognition failed")
             OcrResult("", error = it.message)
         }
+        // OCRSCAN-DEBUG: persist the exact Bitmap fed to the engine together with
+        // the recognized text so the pair can be pulled off-device for debugging
+        // the reading-order / line-merge heuristics. Only in debug builds.
+        saveDebugCapture(bitmap, e.id, result)
         onRecognized(result)
+    }
+
+    /**
+     * OCRSCAN-DEBUG: write `<ts>.png` (the input frame) and `<ts>.txt` (engine id +
+     * confidence + recognized text) into `.../files/ocr-debug/`, sharing the timestamp
+     * prefix so image and text stay together. Run off the main thread (this is called
+     * from the analyzer executor). Pull with e.g.
+     * `adb pull /sdcard/Android/data/org.fcitx.fcitx5.android.qrscan/files/ocr-debug/`.
+     */
+    private fun saveDebugCapture(bitmap: Bitmap, engineId: String, result: OcrResult) {
+        if (!BuildConfig.DEBUG) return
+        runCatching {
+            val dir = File(context.getExternalFilesDir(null), "ocr-debug").also { it.mkdirs() }
+            val ts = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
+            val png = File(dir, "ocr_$ts.png")
+            FileOutputStream(png).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val txt = File(dir, "ocr_$ts.txt")
+            txt.writeText(buildString {
+                appendLine("engine=$engineId")
+                appendLine("confidence=${result.confidence}")
+                result.error?.let { appendLine("error=$it") }
+                appendLine("---- text ----")
+                appendLine(result.text)
+            })
+            Timber.i("OcrScan: debug capture saved -> ${dir.absolutePath}/ocr_$ts.{png,txt}")
+        }.onFailure { Timber.e(it, "OcrScan: failed to save debug capture") }
     }
 
     private fun onRecognized(result: OcrResult) {
